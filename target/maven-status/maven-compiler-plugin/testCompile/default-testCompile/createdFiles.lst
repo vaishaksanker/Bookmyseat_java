@@ -1,0 +1,6 @@
+com\bookmyshow\integration\BookingFlowIntegrationTest.class
+com\bookmyshow\service\MockPaymentServiceTest.class
+com\bookmyshow\service\BookingServiceImplTest.class
+com\bookmyshow\service\AuthServiceImplTest.class
+com\bookmyshow\service\TicketServiceImplTest.class
+com\bookmyshow\service\EventServiceImplTest.class
