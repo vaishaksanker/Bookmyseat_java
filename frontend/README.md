@@ -36,6 +36,11 @@ An enterprise-grade Java desktop application engineered with **Java 17**, **Java
 - **JDK 17** or newer installed.
 - **Apache Maven 3.9+** (installed and in PATH, or use the Maven binary located in `Local\Programs\apache-maven-3.9.6\bin`).
 
+This frontend lives in the `frontend/` folder of the repository; the root `pom.xml` builds the backend. Run every command below from the `frontend/` folder:
+```bash
+cd frontend
+```
+
 ### 1. Compile and Run Unit Tests
 ```bash
 mvn clean test
