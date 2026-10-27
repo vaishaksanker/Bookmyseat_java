@@ -36,7 +36,12 @@ An enterprise-grade Java desktop application engineered with **Java 17**, **Java
 - **JDK 17** or newer installed.
 - **Apache Maven 3.9+** (installed and in PATH, or use the Maven binary located in `Local\Programs\apache-maven-3.9.6\bin`).
 
-This frontend lives in the `frontend/` folder of the repository; the root `pom.xml` builds the backend. Run every command below from the `frontend/` folder:
+This frontend lives in the `frontend/` folder of the repository and runs on the backend in the repository root. Install the backend once (and again whenever it changes), from the repository root:
+```bash
+mvn install -DskipTests
+```
+
+Then run every command below from the `frontend/` folder:
 ```bash
 cd frontend
 ```
@@ -45,7 +50,7 @@ cd frontend
 ```bash
 mvn clean test
 ```
-*Executes all 12 automated unit tests across authentication, event searching, seat conflict handling, and cancellation workflows.*
+*Runs 26 tests: the demo-mode services, plus the UI services running on the real backend and an in-memory database (login, registration, search, seat maps, paid and free bookings, declined payments, cancellations, organizer events, analytics).*
 
 ### 2. Run the Application Directly
 ```bash
@@ -57,6 +62,14 @@ mvn compile exec:java -Dexec.mainClass="com.seminarhall.Main"
 mvn package -DskipTests
 java -jar target/seminar-hall-booking-1.0.0.jar
 ```
+
+### Where data is stored
+The app uses the real backend services and saves everything to a database:
+- **Default:** an embedded H2 database at `~/.bookmyseat/bookmyseat.mv.db`, created and filled with the demo accounts and events on first start. Delete that file to reset the demo data.
+- **PostgreSQL:** add `-Dbookmyseat.db.url=jdbc:postgresql://localhost:5432/bookmyseat -Dbookmyseat.db.user=postgres -Dbookmyseat.db.password=<password>` to the `java` command (see the root `README.md`).
+- **Demo mode (no database):** add `-Dseminarhall.mode=mock` to run on in-memory sample data. If the database cannot be opened, the app falls back to demo mode and says so.
+
+Payments are simulated by the backend: totals ending in `.99` are declined, which is handy for testing the failure path. Free events are confirmed without a payment.
 
 ---
 
