@@ -15,9 +15,11 @@ public class Event {
     private int id;
     private String name;
     private String description;
+    private String category;               // optional, e.g. "WORKSHOP"
     private Venue venue;
     private int organizerId;
     private LocalDateTime eventDateTime;
+    private LocalDateTime endDateTime;     // optional
     private BigDecimal ticketPrice;
     private int totalSeats;
     private int availableSeats;
@@ -51,9 +53,11 @@ public class Event {
     public int getId() { return id; }
     public String getName() { return name; }
     public String getDescription() { return description; }
+    public String getCategory() { return category; }
     public Venue getVenue() { return venue; }
     public int getOrganizerId() { return organizerId; }
     public LocalDateTime getEventDateTime() { return eventDateTime; }
+    public LocalDateTime getEndDateTime() { return endDateTime; }
     public BigDecimal getTicketPrice() { return ticketPrice; }
     public int getTotalSeats() { return totalSeats; }
     public int getAvailableSeats() { return availableSeats; }
@@ -65,9 +69,11 @@ public class Event {
     public void setId(int id) { this.id = id; }
     public void setName(String name) { this.name = name; }
     public void setDescription(String description) { this.description = description; }
+    public void setCategory(String category) { this.category = category; }
     public void setVenue(Venue venue) { this.venue = venue; }
     public void setOrganizerId(int organizerId) { this.organizerId = organizerId; }
     public void setEventDateTime(LocalDateTime eventDateTime) { this.eventDateTime = eventDateTime; }
+    public void setEndDateTime(LocalDateTime endDateTime) { this.endDateTime = endDateTime; }
     public void setTicketPrice(BigDecimal ticketPrice) { this.ticketPrice = ticketPrice; }
     public void setTotalSeats(int totalSeats) { this.totalSeats = totalSeats; }
     public void setAvailableSeats(int availableSeats) { this.availableSeats = availableSeats; }

@@ -35,10 +35,21 @@ public class EventServiceImpl implements EventService {
     public Event createEvent(User organizer, String name, String description,
                              int venueId, LocalDateTime eventDateTime,
                              BigDecimal ticketPrice, int totalSeats) {
+        return createEvent(organizer, name, description, null,
+                venueId, eventDateTime, null, ticketPrice, totalSeats);
+    }
+
+    @Override
+    public Event createEvent(User organizer, String name, String description, String category,
+                             int venueId, LocalDateTime eventDateTime, LocalDateTime endDateTime,
+                             BigDecimal ticketPrice, int totalSeats) {
 
         requireOrganizerOrAdmin(organizer);
         validateEventName(name);
         validateEventDateTime(eventDateTime);
+        if (endDateTime != null && endDateTime.isBefore(eventDateTime)) {
+            throw new ValidationException("endDateTime", "Event end time must not be before its start time");
+        }
         validateTicketPrice(ticketPrice);
         validateTotalSeats(totalSeats);
 
@@ -48,9 +59,11 @@ public class EventServiceImpl implements EventService {
         Event event = new Event();
         event.setName(name.trim());
         event.setDescription(description != null ? description.trim() : "");
+        event.setCategory(category);
         event.setVenue(venue);
         event.setOrganizerId(organizer.getId());
         event.setEventDateTime(eventDateTime);
+        event.setEndDateTime(endDateTime);
         event.setTicketPrice(ticketPrice);
         event.setTotalSeats(totalSeats);
         event.setAvailableSeats(totalSeats);
