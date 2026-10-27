@@ -92,9 +92,8 @@ public class MockPaymentService implements PaymentService {
             payment.setFailureReason("Simulated payment decline");
             Payment savedPayment = paymentDAO.create(payment);
 
-            // Mark booking as failed
-            booking.setStatus(BookingStatus.FAILED);
-            bookingDAO.update(booking);
+            // Mark booking as failed and release its reserved seats
+            bookingService.failBooking(bookingId);
 
             return PaymentResult.failure(savedPayment, "Payment was declined (simulated)");
         }

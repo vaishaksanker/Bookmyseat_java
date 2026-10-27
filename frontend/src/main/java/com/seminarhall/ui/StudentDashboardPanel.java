@@ -4,42 +4,55 @@ import com.seminarhall.model.Event;
 import com.seminarhall.model.EventCategory;
 import com.seminarhall.service.EventService;
 import com.seminarhall.service.ServiceFactory;
-import com.seminarhall.ui.components.EmptyStatePanel;
-import com.seminarhall.ui.components.EventCard;
+import com.seminarhall.ui.components.ErrorPanel;
+import com.seminarhall.ui.components.EventGrid;
 import com.seminarhall.ui.components.FeaturedEventPanel;
 import com.seminarhall.ui.components.LoadingPanel;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * Student home, the web app's HomePage: the "IDEAS / PEOPLE / POSSIBILITIES" hero banner,
+ * "Upcoming Events" with the available count and category chips, and the event card grid.
+ */
 public class StudentDashboardPanel extends JPanel implements NavigationController.RefreshableScreen {
     private final NavigationController navController;
     private final EventService eventService;
 
-    private JPanel contentContainer;
-    private JScrollPane scrollPane;
+    private final FeaturedEventPanel hero;
+    private final EventGrid.SectionHeader header;
+    private final EventGrid grid;
+
+    private List<Event> upcoming = new ArrayList<>();
+    private SwingWorker<List<Event>, Void> loader;
 
     public StudentDashboardPanel(NavigationController navController) {
         this.navController = navController;
         this.eventService = ServiceFactory.getEventService();
 
         setName(NavigationController.SCREEN_STUDENT_DASHBOARD);
-        setOpaque(false);
+        setOpaque(true);
+        setBackground(ThemeManager.BG_PAGE);
         setLayout(new BorderLayout());
 
-        contentContainer = new JPanel();
-        contentContainer.setOpaque(false);
-        contentContainer.setLayout(new BoxLayout(contentContainer, BoxLayout.Y_AXIS));
-        contentContainer.setBorder(BorderFactory.createEmptyBorder(16, 24, 36, 24));
+        // max-w-7xl mx-auto px-8; hero section py-6, chips section mb-6, page pb-16
+        EventGrid.Page page = new EventGrid.Page(1280, 32, 24, 64);
 
-        scrollPane = new JScrollPane(contentContainer);
-        scrollPane.setOpaque(false);
-        scrollPane.getViewport().setOpaque(false);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        hero = new FeaturedEventPanel(null, navController::showEventDetails);
+        header = new EventGrid.SectionHeader("Upcoming Events", category -> showEvents());
+        grid = new EventGrid();
 
-        add(scrollPane, BorderLayout.CENTER);
+        page.add(hero);
+        page.add(Box.createVerticalStrut(24));
+        page.add(header);
+        page.add(Box.createVerticalStrut(24));
+        page.add(grid);
+
+        add(EventGrid.scroll(page), BorderLayout.CENTER);
     }
 
     @Override
@@ -48,100 +61,62 @@ public class StudentDashboardPanel extends JPanel implements NavigationControlle
     }
 
     private void loadDashboardContent() {
-        contentContainer.removeAll();
-        contentContainer.add(new LoadingPanel("Loading SeminarX campus events..."));
-        contentContainer.revalidate();
-        contentContainer.repaint();
+        if (loader != null && !loader.isDone()) {
+            loader.cancel(true);
+        }
+        if (upcoming.isEmpty()) {
+            header.setCountText("");
+            grid.setPlaceholder(new LoadingPanel("Loading SeminarX campus events..."));
+        }
 
-        SwingWorker<List<Event>, Void> worker = new SwingWorker<>() {
+        loader = new SwingWorker<>() {
             @Override
             protected List<Event> doInBackground() throws Exception {
-                return eventService.getAllEvents();
+                return eventService.getUpcomingEvents();
             }
 
             @Override
             protected void done() {
+                if (isCancelled()) {
+                    return;
+                }
                 try {
                     List<Event> events = get();
-                    renderDashboard(events);
+                    upcoming = events == null ? new ArrayList<>() : events.stream()
+                            .filter(e -> !e.isCancelled())
+                            .collect(Collectors.toList());
+                    showEvents();
                 } catch (Exception e) {
-                    contentContainer.removeAll();
-                    contentContainer.add(new JLabel("Failed to load events: " + e.getMessage()));
-                    contentContainer.revalidate();
-                    contentContainer.repaint();
+                    String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    upcoming = new ArrayList<>();
+                    header.setCountText("");
+                    hero.setEvent(null);
+                    grid.setPlaceholder(new ErrorPanel("Failed to load events: " + msg,
+                            StudentDashboardPanel.this::loadDashboardContent));
                 }
             }
         };
-        worker.execute();
+        loader.execute();
     }
 
-    private void renderDashboard(List<Event> events) {
-        contentContainer.removeAll();
+    /** Filters the loaded events by the active chip, like the web's activeCategory filter. */
+    private void showEvents() {
+        EventCategory active = header.getActive();
+        List<Event> shown = upcoming.stream()
+                .filter(e -> active == EventCategory.ALL || e.getCategory() == active)
+                .collect(Collectors.toList());
 
-        if (events == null || events.isEmpty()) {
-            contentContainer.add(new EmptyStatePanel(
-                    "📅",
-                    "No Events Scheduled",
-                    "New seminars and hackathons will appear here.",
-                    "Refresh Listings",
-                    this::loadDashboardContent
-            ));
-            contentContainer.revalidate();
-            contentContainer.repaint();
-            return;
-        }
+        header.setCountText(shown.size() + " Available");
+        hero.setEvent(!shown.isEmpty() ? shown.get(0) : (!upcoming.isEmpty() ? upcoming.get(0) : null));
 
-        // 1. Featured Hero Banner ("IDEAS PEOPLE POSSIBILITIES")
-        Event heroEv = events.get(0);
-        FeaturedEventPanel hero = new FeaturedEventPanel(heroEv, e -> navController.navigateTo(NavigationController.SCREEN_EVENT_LIST));
-        hero.setAlignmentX(Component.LEFT_ALIGNMENT);
-        contentContainer.add(hero);
-        contentContainer.add(Box.createVerticalStrut(28));
-
-        // 2. Upcoming Events Section Header with "View All →"
-        JPanel sectionHead = new JPanel(new BorderLayout());
-        sectionHead.setOpaque(false);
-        sectionHead.setMaximumSize(new Dimension(1600, 32));
-        sectionHead.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel upLbl = new JLabel("Upcoming Events");
-        upLbl.setFont(ThemeManager.FONT_HEADER);
-        upLbl.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel viewAll = new JLabel("View All →");
-        viewAll.setFont(ThemeManager.FONT_BODY_BOLD);
-        viewAll.setForeground(ThemeManager.ACCENT_RED);
-        viewAll.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        viewAll.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                navController.navigateTo(NavigationController.SCREEN_EVENT_LIST);
-            }
-        });
-
-        sectionHead.add(upLbl, BorderLayout.WEST);
-        sectionHead.add(viewAll, BorderLayout.EAST);
-
-        contentContainer.add(sectionHead);
-        contentContainer.add(Box.createVerticalStrut(14));
-
-        // 3. Grid of event cards (AI in Modern World, Web Dev, Cultural Meet, Career Guidance, etc.)
-        JPanel cardsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 16));
-        cardsRow.setOpaque(false);
-        cardsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        for (Event ev : events) {
-            EventCard card = new EventCard(
-                    ev,
-                    e -> navController.showEventDetails(e),
-                    e -> navController.startSeatSelection(e)
-            );
-            cardsRow.add(card);
-        }
-
-        contentContainer.add(cardsRow);
-
-        contentContainer.revalidate();
-        contentContainer.repaint();
+        JComponent empty = upcoming.isEmpty()
+                ? EventGrid.emptyView("No Events Scheduled", "New seminars and hackathons will appear here.",
+                        "Refresh Listings", this::loadDashboardContent)
+                : EventGrid.emptyView("No Events in This Category", "Try another category to see more events.",
+                        "Show All Events", () -> {
+                            header.setActive(EventCategory.ALL);
+                            showEvents();
+                        });
+        grid.setEvents(shown, navController::showEventDetails, navController::startSeatSelection, empty);
     }
 }

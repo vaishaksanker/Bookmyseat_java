@@ -123,19 +123,39 @@ public class BookingServiceImpl implements BookingService {
         if (BookingStatus.CANCELLED.equals(booking.getStatus())) {
             throw new BookingException("Booking is already cancelled");
         }
-        if (BookingStatus.CONFIRMED.equals(booking.getStatus())) {
-            // Release seats back to AVAILABLE
-            List<Integer> seatIds = booking.getBookingSeats()
-                    .stream()
-                    .map(BookingSeat::getSeatId)
-                    .collect(Collectors.toList());
-            if (!seatIds.isEmpty()) {
-                seatDAO.releaseSeats(seatIds);
-            }
+        // PENDING bookings hold reserved seats too; FAILED bookings already released theirs
+        if (BookingStatus.CONFIRMED.equals(booking.getStatus())
+                || BookingStatus.PENDING.equals(booking.getStatus())) {
+            releaseBookingSeats(booking);
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
         return bookingDAO.update(booking);
+    }
+
+    @Override
+    public Booking failBooking(int bookingId) {
+        Booking booking = getBookingById(bookingId);
+        if (!booking.isPending()) {
+            throw new BookingException(
+                    "Cannot fail booking in status: " + booking.getStatus()
+                            + ". Booking must be PENDING.");
+        }
+        releaseBookingSeats(booking);
+
+        booking.setStatus(BookingStatus.FAILED);
+        return bookingDAO.update(booking);
+    }
+
+    private void releaseBookingSeats(Booking booking) {
+        // Release seats back to AVAILABLE
+        List<Integer> seatIds = booking.getBookingSeats()
+                .stream()
+                .map(BookingSeat::getSeatId)
+                .collect(Collectors.toList());
+        if (!seatIds.isEmpty()) {
+            seatDAO.releaseSeats(seatIds);
+        }
     }
 
     @Override

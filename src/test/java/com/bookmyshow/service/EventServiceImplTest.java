@@ -73,6 +73,29 @@ class EventServiceImplTest {
     }
 
     @Test
+    @DisplayName("createEvent: category and end time are stored on the event")
+    void createEvent_withCategoryAndEndTime_storesBoth() {
+        when(venueDAO.findById(10)).thenReturn(Optional.of(venue));
+        when(eventDAO.create(any())).thenAnswer(inv -> inv.getArgument(0));
+        LocalDateTime end = futureDate.plusHours(3);
+
+        Event result = eventService.createEvent(organizer, "Hackathon", "Code all day", "HACKATHON",
+                10, futureDate, end, new BigDecimal("0.00"), 100);
+
+        assertEquals("HACKATHON", result.getCategory());
+        assertEquals(end, result.getEndDateTime());
+    }
+
+    @Test
+    @DisplayName("createEvent: end time before start throws ValidationException")
+    void createEvent_endBeforeStart_throwsValidation() {
+        assertThrows(ValidationException.class, () ->
+                eventService.createEvent(organizer, "Hackathon", "Desc", "HACKATHON",
+                        10, futureDate, futureDate.minusHours(1), new BigDecimal("0.00"), 100));
+        verify(eventDAO, never()).create(any());
+    }
+
+    @Test
     @DisplayName("createEvent: customer role throws UnauthorizedException")
     void createEvent_customerRole_throwsUnauthorized() {
         assertThrows(UnauthorizedException.class, () ->

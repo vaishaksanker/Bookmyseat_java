@@ -23,6 +23,19 @@ public interface EventService {
                       BigDecimal ticketPrice, int totalSeats);
 
     /**
+     * Creates a new event with an optional category and end time.
+     * Only ORGANIZER or ADMIN users may create events.
+     *
+     * @param category    optional category name (e.g. "WORKSHOP"), may be null
+     * @param endDateTime optional end time, may be null; must not be before eventDateTime
+     * @throws com.bookmyshow.exception.ValidationException   if any field is invalid
+     * @throws com.bookmyshow.exception.UnauthorizedException if the user is not an organizer/admin
+     */
+    Event createEvent(User organizer, String name, String description, String category,
+                      int venueId, LocalDateTime eventDateTime, LocalDateTime endDateTime,
+                      BigDecimal ticketPrice, int totalSeats);
+
+    /**
      * Updates an existing event. Only the owning organizer or an admin may update it.
      *
      * @throws com.bookmyshow.exception.EventNotFoundException  if the event does not exist

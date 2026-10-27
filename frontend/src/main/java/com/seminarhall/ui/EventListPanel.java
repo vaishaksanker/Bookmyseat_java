@@ -4,179 +4,210 @@ import com.seminarhall.model.Event;
 import com.seminarhall.model.EventCategory;
 import com.seminarhall.service.EventService;
 import com.seminarhall.service.ServiceFactory;
-import com.seminarhall.ui.components.EmptyStatePanel;
-import com.seminarhall.ui.components.EventCard;
+import com.seminarhall.ui.components.ErrorPanel;
+import com.seminarhall.ui.components.EventGrid;
+import com.seminarhall.ui.components.Icons;
 import com.seminarhall.ui.components.LoadingPanel;
-import com.seminarhall.ui.components.StyledButton;
-import com.seminarhall.ui.components.StyledTextField;
 
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
+/**
+ * Explore / search results: the home page's "Upcoming Events" header, category chips and card
+ * grid without the hero. Text typed in the header search arrives via
+ * {@link NavigationController#consumeSearchQuery()} and shows "Results for ‘query’" with a
+ * "Back to All Events" button; with no query it lists every upcoming event.
+ */
 public class EventListPanel extends JPanel implements NavigationController.RefreshableScreen {
     private final NavigationController navController;
     private final EventService eventService;
 
-    private StyledTextField searchField;
-    private JComboBox<EventCategory> categoryComboBox;
-    private JComboBox<String> sortComboBox;
-    private JPanel cardsGrid;
-    private JScrollPane scrollPane;
+    private final JPanel backRow;
+    private final EventGrid.SectionHeader header;
+    private final EventGrid grid;
+
+    private String query;
+    private List<Event> results = new ArrayList<>();
+    private SwingWorker<List<Event>, Void> loader;
 
     public EventListPanel(NavigationController navController) {
         this.navController = navController;
         this.eventService = ServiceFactory.getEventService();
 
         setName(NavigationController.SCREEN_EVENT_LIST);
-        setOpaque(false);
+        setOpaque(true);
+        setBackground(ThemeManager.BG_PAGE);
         setLayout(new BorderLayout());
 
-        buildUI();
-    }
+        EventGrid.Page page = new EventGrid.Page(1280, 32, 24, 64);
 
-    private void buildUI() {
-        // Top Filter Bar
-        JPanel filterBar = new JPanel(new BorderLayout(16, 12));
-        filterBar.setOpaque(false);
-        filterBar.setBorder(BorderFactory.createEmptyBorder(20, 28, 12, 28));
+        // "Back to All Events" pill (same style as the details page's "Back to Explore"), mb-6
+        backRow = new JPanel(null) {
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(200, 34 + 24);
+            }
 
-        // Header Title
-        JLabel pageTitle = new JLabel("Explore Campus Events");
-        pageTitle.setFont(ThemeManager.FONT_HEADER_XL);
-        pageTitle.setForeground(ThemeManager.TEXT_PRIMARY);
+            @Override
+            public void doLayout() {
+                Component pill = getComponent(0);
+                pill.setBounds(0, 0, pill.getPreferredSize().width, 34);
+            }
+        };
+        backRow.setOpaque(false);
+        backRow.add(new BackPill("Back to All Events", this::showAllEvents));
 
-        // Controls Box
-        JPanel controlsBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        controlsBox.setOpaque(false);
+        header = new EventGrid.SectionHeader("Upcoming Events", category -> showResults());
+        grid = new EventGrid();
 
-        // Search input
-        searchField = new StyledTextField("Search by event, speaker, hall, topic...");
-        searchField.setPreferredSize(new Dimension(320, 38));
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { filterEvents(); }
-            @Override public void removeUpdate(DocumentEvent e) { filterEvents(); }
-            @Override public void changedUpdate(DocumentEvent e) { filterEvents(); }
-        });
+        page.add(backRow);
+        page.add(header);
+        page.add(Box.createVerticalStrut(24));
+        page.add(grid);
 
-        // Category dropdown
-        categoryComboBox = new JComboBox<>(EventCategory.values());
-        categoryComboBox.setFont(ThemeManager.FONT_BODY);
-        categoryComboBox.setBackground(ThemeManager.BG_TERTIARY);
-        categoryComboBox.setForeground(ThemeManager.TEXT_PRIMARY);
-        categoryComboBox.setPreferredSize(new Dimension(200, 38));
-        categoryComboBox.addActionListener(e -> filterEvents());
-
-        // Sort dropdown
-        String[] sortOptions = {"Date (Soonest)", "Price (Low to High)", "Price (High to Low)", "Availability"};
-        sortComboBox = new JComboBox<>(sortOptions);
-        sortComboBox.setFont(ThemeManager.FONT_BODY);
-        sortComboBox.setBackground(ThemeManager.BG_TERTIARY);
-        sortComboBox.setForeground(ThemeManager.TEXT_PRIMARY);
-        sortComboBox.setPreferredSize(new Dimension(170, 38));
-        sortComboBox.addActionListener(e -> filterEvents());
-
-        // Clear filters button
-        StyledButton clearBtn = new StyledButton("Reset Filters", StyledButton.ButtonStyle.SECONDARY);
-        clearBtn.setPreferredSize(new Dimension(120, 38));
-        clearBtn.addActionListener(e -> {
-            searchField.setText("");
-            categoryComboBox.setSelectedItem(EventCategory.ALL);
-            sortComboBox.setSelectedIndex(0);
-            filterEvents();
-        });
-
-        controlsBox.add(searchField);
-        controlsBox.add(categoryComboBox);
-        controlsBox.add(sortComboBox);
-        controlsBox.add(clearBtn);
-
-        JPanel topHeader = new JPanel();
-        topHeader.setOpaque(false);
-        topHeader.setLayout(new BoxLayout(topHeader, BoxLayout.Y_AXIS));
-        topHeader.add(pageTitle);
-        topHeader.add(Box.createVerticalStrut(12));
-        topHeader.add(controlsBox);
-
-        filterBar.add(topHeader, BorderLayout.CENTER);
-        add(filterBar, BorderLayout.NORTH);
-
-        // Main cards grid container
-        cardsGrid = new JPanel(new FlowLayout(FlowLayout.LEFT, 18, 18));
-        cardsGrid.setOpaque(false);
-
-        scrollPane = new JScrollPane(cardsGrid);
-        scrollPane.setOpaque(false);
-        scrollPane.getViewport().setOpaque(false);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder(0, 16, 20, 16));
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-
-        add(scrollPane, BorderLayout.CENTER);
+        add(EventGrid.scroll(page), BorderLayout.CENTER);
     }
 
     @Override
     public void onScreenDisplayed() {
-        filterEvents();
+        String q = navController.consumeSearchQuery();
+        query = q == null || q.trim().isEmpty() ? null : q.trim();
+        header.setActive(EventCategory.ALL);
+        loadEvents();
     }
 
-    private void filterEvents() {
-        String query = searchField.getText().trim();
-        EventCategory selectedCategory = (EventCategory) categoryComboBox.getSelectedItem();
-        String sortBy = (String) sortComboBox.getSelectedItem();
+    private void showAllEvents() {
+        query = null;
+        header.setActive(EventCategory.ALL);
+        loadEvents();
+    }
 
-        cardsGrid.removeAll();
-        cardsGrid.setLayout(new GridBagLayout());
-        cardsGrid.add(new LoadingPanel("Filtering seminar listings..."));
-        cardsGrid.revalidate();
-        cardsGrid.repaint();
+    private void loadEvents() {
+        if (loader != null && !loader.isDone()) {
+            loader.cancel(true);
+        }
+        String q = query;
+        backRow.setVisible(q != null);
+        header.setTitle(q != null ? "Results for ‘" + q + "’" : "Upcoming Events");
+        header.setCountText("");
+        grid.setPlaceholder(new LoadingPanel(q != null ? "Searching campus events..." : "Loading SeminarX campus events..."));
 
-        SwingWorker<List<Event>, Void> worker = new SwingWorker<>() {
+        loader = new SwingWorker<>() {
             @Override
             protected List<Event> doInBackground() throws Exception {
-                return eventService.searchEvents(query, selectedCategory, sortBy);
+                if (q == null) {
+                    return eventService.getUpcomingEvents();
+                }
+                LocalDate today = LocalDate.now();
+                return eventService.searchEvents(q, EventCategory.ALL, "Date (Soonest)").stream()
+                        .filter(e -> e.getDate() == null || !e.getDate().isBefore(today))
+                        .collect(Collectors.toList());
             }
 
             @Override
             protected void done() {
+                if (isCancelled()) {
+                    return;
+                }
                 try {
-                    List<Event> results = get();
-                    cardsGrid.removeAll();
-
-                    if (results == null || results.isEmpty()) {
-                        cardsGrid.setLayout(new GridBagLayout());
-                        cardsGrid.add(new EmptyStatePanel(
-                                "🔍",
-                                "No Matching Events Found",
-                                "Try adjusting your search keywords or clearing category filters.",
-                                "Clear Filters",
-                                () -> {
-                                    searchField.setText("");
-                                    categoryComboBox.setSelectedItem(EventCategory.ALL);
-                                }
-                        ));
-                    } else {
-                        cardsGrid.setLayout(new FlowLayout(FlowLayout.LEFT, 18, 18));
-                        for (Event ev : results) {
-                            EventCard card = new EventCard(
-                                    ev,
-                                    e -> navController.showEventDetails(e),
-                                    e -> navController.startSeatSelection(e)
-                            );
-                            cardsGrid.add(card);
-                        }
-                    }
-                    cardsGrid.revalidate();
-                    cardsGrid.repaint();
+                    List<Event> events = get();
+                    results = events == null ? new ArrayList<>() : events.stream()
+                            .filter(e -> !e.isCancelled())
+                            .collect(Collectors.toList());
+                    showResults();
                 } catch (Exception e) {
-                    cardsGrid.removeAll();
-                    cardsGrid.add(new JLabel("Error loading events: " + e.getMessage()));
-                    cardsGrid.revalidate();
-                    cardsGrid.repaint();
+                    String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    results = new ArrayList<>();
+                    grid.setPlaceholder(new ErrorPanel("Error loading events: " + msg, EventListPanel.this::loadEvents));
                 }
             }
         };
-        worker.execute();
+        loader.execute();
+    }
+
+    private void showResults() {
+        EventCategory active = header.getActive();
+        List<Event> shown = results.stream()
+                .filter(e -> active == EventCategory.ALL || e.getCategory() == active)
+                .collect(Collectors.toList());
+
+        header.setCountText(shown.size() + (query != null ? " Found" : " Available"));
+
+        JComponent empty;
+        if (query != null && results.isEmpty()) {
+            empty = EventGrid.emptyView("No Matching Events Found",
+                    "Nothing matches ‘" + query + "’. Try another keyword or browse every upcoming event.",
+                    "Show All Events", this::showAllEvents);
+        } else if (results.isEmpty()) {
+            empty = EventGrid.emptyView("No Events Scheduled", "New seminars and hackathons will appear here.",
+                    "Refresh Listings", this::loadEvents);
+        } else {
+            empty = EventGrid.emptyView("No Events in This Category", "Try another category to see more events.",
+                    "Show All Categories", () -> {
+                        header.setActive(EventCategory.ALL);
+                        showResults();
+                    });
+        }
+        grid.setEvents(shown, navController::showEventDetails, navController::startSeatSelection, empty);
+    }
+
+    /**
+     * "bg-black/70 border border-white/10 hover:border-white/30 text-white text-xs px-4 py-2
+     * rounded-xl font-semibold" with an arrow-left icon.
+     */
+    static final class BackPill extends JLabel {
+        private boolean hovered;
+
+        BackPill(String text, Runnable onClick) {
+            super(text, Icons.get("arrow-left", 14, Color.WHITE), SwingConstants.LEFT);
+            setFont(ThemeManager.font(ThemeManager.Weight.SEMIBOLD, 12));
+            setForeground(Color.WHITE);
+            setIconTextGap(8);
+            setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    hovered = true;
+                    repaint();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    hovered = false;
+                    repaint();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    onClick.run();
+                }
+            });
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            Dimension d = super.getPreferredSize();
+            return new Dimension(d.width, 34);           // py-2 + text-xs + border
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int arc = ThemeManager.RADIUS_XL * 2;
+            g2.setColor(new Color(0, 0, 0, 179));
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
+            g2.setColor(hovered ? new Color(255, 255, 255, 77) : ThemeManager.BORDER_CARD);
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 }

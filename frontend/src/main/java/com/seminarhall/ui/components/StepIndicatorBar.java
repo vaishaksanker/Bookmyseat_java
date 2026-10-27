@@ -1,18 +1,27 @@
 package com.seminarhall.ui.components;
 
 import com.seminarhall.ui.ThemeManager;
+import com.seminarhall.ui.ThemeManager.Weight;
 
 import javax.swing.*;
 import java.awt.*;
 
-public class StepIndicatorBar extends JPanel {
-    private int currentStep; // 1: Select Seats, 2: Booking Summary, 3: Payment, 4: Confirmation
+/**
+ * The web app's booking steps, shown in the seat page header:
+ * "Step 1: Select Seats → Step 2: Summary → Step 3: Payment"
+ * (flex gap-4 text-xs font-semibold; the current step gray-400, the others gray-500, arrows gray-600).
+ */
+public class StepIndicatorBar extends JComponent {
+    private static final String[] STEPS = {"Step 1: Select Seats", "Step 2: Summary", "Step 3: Payment"};
+    private static final String ARROW = "→";
+    private static final int GAP = 16;
+    private static final Font FONT = ThemeManager.font(Weight.SEMIBOLD, 12);
+
+    private int currentStep; // 1: Select Seats, 2: Summary, 3: Payment
 
     public StepIndicatorBar(int currentStep) {
         this.currentStep = currentStep;
         setOpaque(false);
-        setPreferredSize(new Dimension(560, 40));
-        setMaximumSize(new Dimension(650, 40));
     }
 
     public void setCurrentStep(int currentStep) {
@@ -21,61 +30,32 @@ public class StepIndicatorBar extends JPanel {
     }
 
     @Override
+    public Dimension getPreferredSize() {
+        FontMetrics fm = getFontMetrics(FONT);
+        int w = 0;
+        for (String step : STEPS) w += fm.stringWidth(step);
+        w += fm.stringWidth(ARROW) * (STEPS.length - 1) + GAP * (STEPS.length * 2 - 2);
+        return new Dimension(w, 16);
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
-        super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        String[] stepTitles = {"Select Seats", "Booking Summary", "Payment", "Confirmation"};
-        int totalSteps = 4;
-        int w = getWidth();
-        int stepWidth = w / totalSteps;
-        int y = getHeight() / 2;
-
-        // Draw connecting track line
-        g2.setColor(ThemeManager.BORDER_SUBTLE);
-        g2.setStroke(new BasicStroke(2.0f));
-        g2.drawLine(stepWidth / 2, y, w - (stepWidth / 2), y);
-
-        for (int i = 0; i < totalSteps; i++) {
-            int stepNum = i + 1;
-            int x = (i * stepWidth) + (stepWidth / 2);
-            boolean isCompleted = stepNum < currentStep;
-            boolean isActive = stepNum == currentStep;
-
-            // Circle indicator
-            int radius = 13;
-            if (isActive) {
-                g2.setColor(ThemeManager.ACCENT_RED);
-                g2.fillOval(x - radius, y - radius, radius * 2, radius * 2);
-                g2.setColor(Color.WHITE);
-            } else if (isCompleted) {
-                g2.setColor(ThemeManager.STATUS_GREEN);
-                g2.fillOval(x - radius, y - radius, radius * 2, radius * 2);
-                g2.setColor(Color.WHITE);
-            } else {
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillOval(x - radius, y - radius, radius * 2, radius * 2);
-                g2.setColor(ThemeManager.BORDER_SUBTLE);
-                g2.drawOval(x - radius, y - radius, radius * 2, radius * 2);
-                g2.setColor(ThemeManager.TEXT_MUTED);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2.setFont(FONT);
+        FontMetrics fm = g2.getFontMetrics();
+        int x = getWidth() - getPreferredSize().width;
+        int baseline = (getHeight() - fm.getAscent() - fm.getDescent()) / 2 + fm.getAscent();
+        for (int i = 0; i < STEPS.length; i++) {
+            if (i > 0) {
+                g2.setColor(BookingFlowParts.GRAY_600);
+                g2.drawString(ARROW, x, baseline);
+                x += fm.stringWidth(ARROW) + GAP;
             }
-
-            // Step number text
-            g2.setFont(ThemeManager.FONT_SMALL_BOLD);
-            FontMetrics fm = g2.getFontMetrics();
-            String numStr = isCompleted ? "✓" : String.valueOf(stepNum);
-            int nx = x - (fm.stringWidth(numStr) / 2);
-            int ny = y + (fm.getAscent() - fm.getDescent()) / 2;
-            g2.drawString(numStr, nx, ny);
-
-            // Step title text next to circle
-            g2.setFont(isActive ? ThemeManager.FONT_SMALL_BOLD : ThemeManager.FONT_SMALL);
-            g2.setColor(isActive ? ThemeManager.TEXT_PRIMARY : ThemeManager.TEXT_MUTED);
-            String title = stepTitles[i];
-            g2.drawString(title, x + radius + 6, y + 4);
+            g2.setColor(i + 1 == currentStep ? ThemeManager.TEXT_SECONDARY : ThemeManager.TEXT_MUTED);
+            g2.drawString(STEPS[i], x, baseline);
+            x += fm.stringWidth(STEPS[i]) + GAP;
         }
-
         g2.dispose();
     }
 }

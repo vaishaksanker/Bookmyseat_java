@@ -46,6 +46,14 @@ public interface BookingService {
     Booking cancelBooking(int bookingId);
 
     /**
+     * Marks a PENDING booking as FAILED (e.g. payment declined) and releases
+     * its reserved seats so other users can book them.
+     *
+     * @throws com.bookmyshow.exception.BookingException if the booking is not PENDING
+     */
+    Booking failBooking(int bookingId);
+
+    /**
      * Retrieves a booking by ID.
      *
      * @throws com.bookmyshow.exception.BookingException if not found

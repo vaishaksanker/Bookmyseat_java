@@ -7,185 +7,263 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Area;
+import java.awt.geom.RoundRectangle2D;
+import java.awt.image.BufferedImage;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.function.Consumer;
 
+/**
+ * Event card from the web app's home grid (App.jsx HomePage): a .glass-card rounded-2xl with
+ * an h-48 photo (category tag top-left, "N seats left" bottom-right), the title, date · time and
+ * hall rows, then "Price" and the glowing "Book Seats" button. Clicking the card opens the
+ * details; the button starts booking.
+ */
 public class EventCard extends JPanel {
+
+    /** Card height: h-48 photo + p-4 body (title, two rows, footer). */
+    public static final int HEIGHT = 351;
+
+    private static final int PHOTO_H = 192;
+    private static final int PAD = 16;
+    private static final int RADIUS = ThemeManager.RADIUS_2XL;
+    private static final int FOOTER_Y = 290;   // border-t of the price row
+    private static final Color FOOTER_LINE = new Color(29, 34, 50);       // #1d2232
+    private static final Color CARD_FILL = new Color(18, 21, 32, 209);    // rgba(18,21,32,.82)
+    private static final Color HOVER_BORDER = new Color(255, 56, 46, 115);
+
+    static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
+    static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("hh:mm a", Locale.ENGLISH);
+
     private final Event event;
-    private final Consumer<Event> onViewDetails;
-    private final Consumer<Event> onBookNow;
-    private boolean isHovered = false;
+    private final JLabel title;
+    private final JLabel dateRow;
+    private final JLabel hallRow;
+    private final JLabel priceCaption;
+    private final JLabel price;
+    private final StyledButton bookButton;
+    private final Photo photo;
+    private boolean hovered;
 
     public EventCard(Event event, Consumer<Event> onViewDetails, Consumer<Event> onBookNow) {
         this.event = event;
-        this.onViewDetails = onViewDetails;
-        this.onBookNow = onBookNow;
-
         setOpaque(false);
-        setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(240, 270));
-        setMinimumSize(new Dimension(220, 260));
-        setMaximumSize(new Dimension(260, 290));
-        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        setLayout(null);
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        setPreferredSize(new Dimension(286, HEIGHT));
 
-        buildUI();
+        photo = new Photo(EventVisuals.imageFor(event));
+        RemoteImages.get(EventVisuals.imageFor(event), photo::repaint);   // start the download now, not at first paint
+        Tag tag = new Tag(EventVisuals.tagLabel(event.getCategory()), EventVisuals.tagColor(event.getCategory()),
+                Color.WHITE, 6, EventGrid.tracked(ThemeManager.font(ThemeManager.Weight.EXTRABOLD, 9), 0.05f));
+        tag.setBorder(BorderFactory.createEmptyBorder(4, 10, 4, 10));
+        SeatsPill seats = new SeatsPill(event.getAvailableSeats() + " seats left");
+        photo.add(tag);
+        photo.add(seats);
+        add(photo);
 
-        addMouseListener(new MouseAdapter() {
+        title = new JLabel(event.getTitle());
+        title.setFont(ThemeManager.font(ThemeManager.Weight.BOLD, 14));
+        title.setForeground(ThemeManager.TEXT_PRIMARY);
+        add(title);
+
+        String when = (event.getDate() != null ? event.getDate().format(DATE) : "")
+                + (event.getStartTime() != null ? " · " + event.getStartTime().format(TIME) : "");
+        dateRow = infoRow("calendar", when);
+        hallRow = infoRow("map-pin", event.getSeminarHall());
+        add(dateRow);
+        add(hallRow);
+
+        priceCaption = new JLabel("Price");
+        priceCaption.setFont(ThemeManager.font(ThemeManager.Weight.REGULAR, 10));
+        priceCaption.setForeground(ThemeManager.TEXT_MUTED);
+        add(priceCaption);
+
+        boolean free = event.getTicketPrice() <= 0;
+        price = new JLabel(EventVisuals.priceLabel(event.getTicketPrice()));
+        price.setFont(ThemeManager.font(ThemeManager.Weight.EXTRABOLD, 14));
+        price.setForeground(free ? ThemeManager.EMERALD_400 : ThemeManager.AMBER_400);
+        add(price);
+
+        bookButton = new StyledButton("Book Seats", StyledButton.ButtonStyle.PRIMARY);
+        bookButton.setFont(ThemeManager.font(ThemeManager.Weight.BOLD, 12));
+        bookButton.setMargin(new Insets(8, 16, 8, 16));
+        bookButton.setIcon(Icons.get("chevron-right", 13, Color.WHITE));
+        bookButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        bookButton.setIconTextGap(4);
+        bookButton.setGlow(true);
+        bookButton.addActionListener(e -> {
+            if (onBookNow != null) {
+                onBookNow.accept(event);
+            }
+        });
+        add(bookButton);
+
+        MouseAdapter mouse = new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
-                isHovered = true;
-                repaint();
+                setHovered(true);
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                isHovered = false;
-                repaint();
+                Point p = SwingUtilities.convertPoint(e.getComponent(), e.getPoint(), EventCard.this);
+                if (!new Rectangle(getSize()).contains(p)) {
+                    setHovered(false);
+                }
             }
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (onViewDetails != null) {
+                if (onViewDetails != null && SwingUtilities.isLeftMouseButton(e)) {
                     onViewDetails.accept(event);
                 }
+            }
+        };
+        addMouseListener(mouse);
+        bookButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                mouse.mouseExited(e);
             }
         });
     }
 
-    private void buildUI() {
-        // Poster / Thumbnail Panel (Stage / Audience photo illustration)
-        JPanel poster = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-                int w = getWidth();
-                int h = getHeight();
-
-                // Warm cinematic stage lighting gradient
-                GradientPaint gp = new GradientPaint(
-                        0, 0, new Color(48, 20, 18),
-                        w, h, new Color(20, 22, 32)
-                );
-                g2.setPaint(gp);
-                g2.fillRoundRect(0, 0, w, h, 10, 10);
-
-                // Speaker silhouette / Stage spotlight icon
-                g2.setFont(new Font("Segoe UI", Font.PLAIN, 28));
-                g2.setColor(new Color(255, 255, 255, 40));
-                g2.drawString(getCategoryIcon(event.getCategory().name()), 16, 44);
-
-                // Category pill tag at bottom left of thumbnail
-                Color tagColor = getCategoryColor(event.getCategory().name());
-                g2.setColor(tagColor);
-                g2.fillRoundRect(10, h - 26, 76, 18, 6, 6);
-                g2.setColor(Color.WHITE);
-                g2.setFont(ThemeManager.FONT_SMALL_BOLD);
-                String catName = getCategoryShort(event.getCategory().name());
-                FontMetrics fm = g2.getFontMetrics();
-                int tx = 10 + (76 - fm.stringWidth(catName)) / 2;
-                g2.drawString(catName, tx, h - 13);
-
-                g2.dispose();
-            }
-        };
-        poster.setPreferredSize(new Dimension(220, 115));
-        poster.setOpaque(false);
-        add(poster, BorderLayout.NORTH);
-
-        // Body info matching Screen 3 cards
-        JPanel info = new JPanel();
-        info.setOpaque(false);
-        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
-        info.setBorder(BorderFactory.createEmptyBorder(8, 2, 4, 2));
-
-        JLabel titleLbl = new JLabel("<html><b>" + event.getTitle() + "</b></html>");
-        titleLbl.setFont(ThemeManager.FONT_BODY_BOLD);
-        titleLbl.setForeground(ThemeManager.TEXT_PRIMARY);
-        titleLbl.setPreferredSize(new Dimension(210, 36));
-
-        String dateStr = event.getDate().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) + " • " +
-                event.getStartTime().format(DateTimeFormatter.ofPattern("hh:mm a"));
-        JLabel dateLbl = new JLabel("📅 " + dateStr);
-        dateLbl.setFont(ThemeManager.FONT_SMALL);
-        dateLbl.setForeground(ThemeManager.TEXT_MUTED);
-
-        JLabel hallLbl = new JLabel("📍 " + event.getSeminarHall());
-        hallLbl.setFont(ThemeManager.FONT_SMALL);
-        hallLbl.setForeground(ThemeManager.TEXT_MUTED);
-
-        // Price Row
-        JPanel priceRow = new JPanel(new BorderLayout());
-        priceRow.setOpaque(false);
-        priceRow.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
-
-        String priceStr = event.getTicketPrice() > 0 ? "₹" + String.format("%.0f", event.getTicketPrice()) : "Free";
-        JLabel priceLbl = new JLabel(priceStr);
-        priceLbl.setFont(ThemeManager.FONT_BODY_BOLD);
-        priceLbl.setForeground(event.getTicketPrice() > 0 ? ThemeManager.TEXT_PRIMARY : ThemeManager.STATUS_GREEN);
-
-        JLabel bookmarkIcon = new JLabel("🔖");
-        bookmarkIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 13));
-        bookmarkIcon.setForeground(ThemeManager.TEXT_MUTED);
-
-        priceRow.add(priceLbl, BorderLayout.WEST);
-        priceRow.add(bookmarkIcon, BorderLayout.EAST);
-
-        info.add(titleLbl);
-        info.add(Box.createVerticalStrut(4));
-        info.add(dateLbl);
-        info.add(Box.createVerticalStrut(2));
-        info.add(hallLbl);
-        info.add(Box.createVerticalStrut(4));
-        info.add(priceRow);
-
-        add(info, BorderLayout.CENTER);
+    public Event getEvent() {
+        return event;
     }
 
-    private Color getCategoryColor(String cat) {
-        if (cat.contains("TECH")) return ThemeManager.STATUS_BLUE;
-        if (cat.contains("WORK")) return ThemeManager.STATUS_ORANGE;
-        if (cat.contains("CULTURAL")) return ThemeManager.STATUS_PURPLE;
-        if (cat.contains("HACK")) return new Color(168, 85, 247);
-        if (cat.contains("SPORT")) return new Color(14, 165, 233);
-        return ThemeManager.STATUS_GREEN;
+    private static JLabel infoRow(String icon, String text) {
+        JLabel label = Icons.withText(icon, 13, ThemeManager.TEXT_MUTED, text,
+                ThemeManager.font(ThemeManager.Weight.REGULAR, 12), ThemeManager.TEXT_SECONDARY);
+        label.setIconTextGap(8);
+        return label;
     }
 
-    private String getCategoryShort(String cat) {
-        if (cat.contains("TECH")) return "TECHNICAL";
-        if (cat.contains("WORK")) return "WORKSHOP";
-        if (cat.contains("CULTURAL")) return "CULTURAL";
-        if (cat.contains("HACK")) return "HACKATHON";
-        if (cat.contains("SPORT")) return "SPORTS";
-        return "SEMINAR";
+    private void setHovered(boolean hovered) {
+        if (this.hovered != hovered) {
+            this.hovered = hovered;
+            title.setForeground(hovered ? ThemeManager.BRAND_RED : ThemeManager.TEXT_PRIMARY);
+            repaint();
+        }
     }
 
-    private String getCategoryIcon(String cat) {
-        if (cat.contains("TECH")) return "💻";
-        if (cat.contains("WORK")) return "🛠";
-        if (cat.contains("CULTURAL")) return "🎭";
-        if (cat.contains("HACK")) return "⚡";
-        if (cat.contains("SPORT")) return "🏆";
-        return "🎙";
+    @Override
+    public void doLayout() {
+        int w = getWidth();
+        int inner = w - 2 * PAD;
+        photo.setBounds(0, 0, w, PHOTO_H);
+        title.setBounds(PAD, PHOTO_H + PAD, inner, 20);                 // text-sm, mb-2
+        dateRow.setBounds(PAD, PHOTO_H + PAD + 28, inner, 16);          // text-xs, space-y-1.5
+        hallRow.setBounds(PAD, PHOTO_H + PAD + 50, inner, 16);
+
+        int rowY = FOOTER_Y + 1 + 12;                                   // border-t pt-3
+        int rowH = 32;
+        priceCaption.setBounds(PAD, rowY + 1, inner / 2, 11);           // leading-none
+        price.setBounds(PAD, rowY + 11, inner / 2, 20);
+        Dimension b = bookButton.getPreferredSize();
+        // the glow adds 8px at the sides, 2px above and 12px below the visible button
+        int visibleH = b.height - 14;
+        bookButton.setBounds(w - PAD - b.width + 8, rowY + (rowH - visibleH) / 2 - 2, b.width, b.height);
     }
 
     @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
         int w = getWidth();
         int h = getHeight();
-
-        g2.setColor(isHovered ? ThemeManager.BG_CARD_HOVER : ThemeManager.BG_CARD);
-        g2.fillRoundRect(0, 0, w, h, 14, 14);
-
-        g2.setColor(isHovered ? ThemeManager.ACCENT_RED : ThemeManager.BORDER_CARD);
-        g2.setStroke(new BasicStroke(1.0f));
-        g2.drawRoundRect(0, 0, w - 1, h - 1, 14, 14);
-
+        g2.setColor(CARD_FILL);
+        g2.fillRoundRect(0, 0, w - 1, h - 1, RADIUS * 2, RADIUS * 2);
+        g2.setColor(FOOTER_LINE);
+        g2.fillRect(PAD, FOOTER_Y, w - 2 * PAD, 1);
         g2.dispose();
-        super.paintComponent(g);
+    }
+
+    @Override
+    protected void paintChildren(Graphics g) {
+        super.paintChildren(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(hovered ? HOVER_BORDER : ThemeManager.BORDER_SUBTLE);
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, RADIUS * 2, RADIUS * 2);
+        g2.dispose();
+    }
+
+    /** The h-48 photo: cover-fit, top corners rounded, "bg-gradient-to-t from-[#10131d] via-transparent to-black/30". */
+    private static final class Photo extends JComponent {
+        private final String url;
+
+        Photo(String url) {
+            this.url = url;
+            setLayout(null);
+        }
+
+        @Override
+        public void doLayout() {
+            Component tag = getComponent(0);
+            Component seats = getComponent(1);
+            Dimension t = tag.getPreferredSize();
+            tag.setBounds(12, 12, t.width, 21);
+            Dimension s = seats.getPreferredSize();
+            seats.setBounds(getWidth() - 12 - s.width, getHeight() - 12 - s.height, s.width, s.height);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            int w = getWidth();
+            int h = getHeight();
+            Area clip = new Area(new RoundRectangle2D.Float(0, 0, w, h + RADIUS * 2, RADIUS * 2, RADIUS * 2));
+            clip.intersect(new Area(new Rectangle(0, 0, w, h)));
+            g2.clip(clip);
+
+            BufferedImage image = RemoteImages.get(url, this::repaint);
+            if (image != null) {
+                double scale = Math.max((double) w / image.getWidth(), (double) h / image.getHeight());
+                int iw = (int) Math.ceil(image.getWidth() * scale);
+                int ih = (int) Math.ceil(image.getHeight() * scale);
+                g2.drawImage(image, (w - iw) / 2, (h - ih) / 2, iw, ih, null);
+            } else {
+                g2.setPaint(new GradientPaint(0, 0, new Color(40, 14, 16), w, h, ThemeManager.BG_SECONDARY));
+                g2.fillRect(0, 0, w, h);
+            }
+            g2.setPaint(new LinearGradientPaint(0, 0, 0, h, new float[]{0f, 0.5f, 1f},
+                    new Color[]{new Color(0, 0, 0, 77), new Color(16, 19, 29, 0), new Color(16, 19, 29)}));
+            g2.fillRect(0, 0, w, h);
+            g2.dispose();
+        }
+    }
+
+    /** "45 seats left": bg-black/70 text-[10px] text-emerald-400 font-bold rounded border-emerald-500/30. */
+    private static final class SeatsPill extends JLabel {
+        SeatsPill(String text) {
+            super(text);
+            setFont(ThemeManager.font(ThemeManager.Weight.BOLD, 10));
+            setForeground(ThemeManager.EMERALD_400);
+            setBorder(BorderFactory.createEmptyBorder(3, 10, 3, 10));
+        }
+
+        @Override
+        public Dimension getPreferredSize() {
+            Dimension d = super.getPreferredSize();
+            return new Dimension(d.width, 21);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(0, 0, 0, 179));
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+            g2.setColor(new Color(16, 185, 129, 77));
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 }

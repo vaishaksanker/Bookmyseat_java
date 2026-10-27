@@ -54,14 +54,19 @@ bms_java/
 ├── docs/
 │   ├── BookMyShow_System_Documentation.md   ← Full code documentation
 │   └── ...
+├── frontend/                ← Swing desktop UI (Member 3), depends on this module
 └── src/
     ├── main/java/com/bookmyshow/
     │   ├── model/           ← Domain entities (User, Event, Seat, Booking, etc.)
     │   │   └── enums/       ← Role, EventStatus, SeatStatus, BookingStatus, PaymentStatus
     │   ├── dao/             ← DAO interfaces (contracts for the DB layer)
+    │   │   └── jdbc/        ← JDBC implementations (H2 by default, PostgreSQL supported)
     │   ├── service/         ← Business logic — interfaces + implementations
     │   └── exception/       ← Custom runtime exceptions
+    ├── main/resources/
+    │   └── schema.sql       ← Tables, created automatically on start
     └── test/java/com/bookmyshow/
+        ├── dao/jdbc/        ← Services + JDBC DAOs against a real (in-memory) database
         ├── integration/     ← End-to-end booking flow test
         └── service/         ← Unit tests for each service
 ```
@@ -72,7 +77,7 @@ bms_java/
 
 ```
 ┌──────────────────────────────┐
-│     UI / Controller Layer    │  ← Member 3
+│     UI / Controller Layer    │  ← Member 3 (frontend/, via an adapter)
 └──────────────┬───────────────┘
                │ calls
 ┌──────────────▼───────────────┐
@@ -85,9 +90,13 @@ bms_java/
 └──────────────┬───────────────┘
                │ calls
 ┌──────────────▼───────────────┐
-│        DAO Interfaces        │  ← Implemented by Member 1 (JDBC + PostgreSQL)
+│        DAO Interfaces        │  ← Member 1's layer
 │  UserDAO, EventDAO,          │
 │  BookingDAO, SeatDAO, etc.   │
+└──────────────┬───────────────┘
+               │ implemented by
+┌──────────────▼───────────────┐
+│   dao/jdbc (JdbcUserDAO …)   │  ← H2 file by default, PostgreSQL via settings
 └──────────────────────────────┘
 ```
 
@@ -127,7 +136,7 @@ All services depend only on **interfaces**, not concrete implementations. This m
       → verifies amount matches booking total
       → simulates gateway call
       → on success: booking → CONFIRMED
-      → on failure: booking → FAILED
+      → on failure: booking → FAILED and its seats are released
 
 5. Generate Ticket
       TicketService.generateTicket(bookingId)
@@ -150,11 +159,21 @@ cd Bookmyseat_java
 # Build
 mvn clean compile
 
-# Package as JAR
-mvn clean package -DskipTests
+# Package as JAR and install it for the frontend
+mvn clean install -DskipTests
 ```
 
-> **Note:** The DAO interfaces are not implemented in this module. To run a full end-to-end application, plug in Member 1's JDBC implementations. The test suite runs entirely with Mockito mocks — no database needed.
+To run the whole product (Swing UI + this backend + database), install this module as above, then follow `frontend/README.md`.
+
+### Database
+
+The JDBC DAOs in `com.bookmyshow.dao.jdbc` need no setup: by default they use an embedded **H2** database file at `~/.bookmyseat/bookmyseat.mv.db`, created with `schema.sql` on first start. To use **PostgreSQL** instead, create an empty database and pass:
+
+```bash
+-Dbookmyseat.db.url=jdbc:postgresql://localhost:5432/bookmyseat -Dbookmyseat.db.user=postgres -Dbookmyseat.db.password=<password>
+```
+
+(or set `BOOKMYSEAT_DB_URL`, `BOOKMYSEAT_DB_USER`, `BOOKMYSEAT_DB_PASSWORD`). The tables are created automatically.
 
 ---
 
@@ -181,6 +200,7 @@ mvn test -Dtest=BookingFlowIntegrationTest
 | `MockPaymentServiceTest` | Payment success, simulated decline, duplicate payment rejection |
 | `TicketServiceImplTest` | Ticket generation guards, duplicate prevention, retrieval |
 | `BookingFlowIntegrationTest` | Full Register → Login → Book → Pay → Ticket flow end-to-end |
+| `JdbcBookingFlowTest` | Real services on the JDBC DAOs and an in-memory H2 database: seat maps, booking, payment, declined payments, cancel + re-book, double-booking, persistence |
 
 ---
 
@@ -192,7 +212,7 @@ mvn test -Dtest=BookingFlowIntegrationTest
 
 **Interfaces everywhere** — Services and DAOs are interfaces. Implementations are injected via constructor. This enables mocking in tests and swapping implementations (e.g., replacing `MockPaymentService` with a real gateway adapter).
 
-**Three-layer double-booking protection** — Service pre-check (status == AVAILABLE) + DAO `SELECT FOR UPDATE` lock + DB UNIQUE constraint on `(event_id, seat_id)`.
+**Three-layer double-booking protection** — Service pre-check (status == AVAILABLE) + DAO `SELECT FOR UPDATE` lock + a conditional `UPDATE … WHERE status = 'AVAILABLE'` that reserves all seats or none. (A UNIQUE constraint on `booking_seats(event_id, seat_id)` was not used: it would stop a cancelled seat from ever being booked again.)
 
 **Unchecked exceptions** — All custom exceptions extend `RuntimeException`. No forced `throws` declarations; exceptions propagate to the layer that knows how to handle them (typically the UI/controller).
 

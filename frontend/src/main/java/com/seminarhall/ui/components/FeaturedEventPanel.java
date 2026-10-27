@@ -7,88 +7,154 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.function.Consumer;
 
-public class FeaturedEventPanel extends JPanel {
-    private final Event event;
+/**
+ * The home page's cinematic hero banner (App.jsx HomePage): a rounded-3xl auditorium photo
+ * darkened from the left, the "PREMIUM COLLEGE AUDITORIUM SEATING" pill, the
+ * "IDEAS / PEOPLE / POSSIBILITIES" heading, the subtitle and the glowing
+ * "Explore Featured Event" button, which opens the featured event's details.
+ */
+public class FeaturedEventPanel extends PhotoPanel implements EventGrid.HeightForWidth {
+
+    private static final int PAD = 56;            // sm:p-14
+    private static final int MIN_HEIGHT = 440;    // sm:min-h-[440px]
+    private static final int CONTENT_MAX = 576;   // max-w-xl
+    private static final int H1_LINE = 60;        // lg:text-6xl (its line-height: 1 overrides leading-tight)
+
+    private Event event;
     private final Consumer<Event> onExplore;
 
+    private final JComponent pill;
+    private final EventGrid.Paragraph heading;
+    private final EventGrid.Paragraph headingAccent;
+    private final EventGrid.Paragraph subtitle;
+    private final StyledButton exploreButton;
+
     public FeaturedEventPanel(Event event, Consumer<Event> onExplore) {
+        super(EventVisuals.AUDITORIUM_STAGE, ThemeManager.RADIUS_3XL, Overlay.HERO);
         this.event = event;
         this.onExplore = onExplore;
+        setLayout(null);
+        RemoteImages.get(EventVisuals.AUDITORIUM_STAGE, this::repaint);
 
-        setOpaque(false);
-        setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(860, 220));
-        setMaximumSize(new Dimension(1600, 240));
-        setBorder(BorderFactory.createEmptyBorder(28, 36, 28, 36));
+        pill = new SparklePill("PREMIUM COLLEGE AUDITORIUM SEATING");
 
-        buildUI();
-    }
+        Font h1 = EventGrid.tracked(ThemeManager.font(ThemeManager.Weight.EXTRABOLD, 60), -0.025f);
+        heading = new EventGrid.Paragraph("IDEAS\nPEOPLE", h1, Color.WHITE, H1_LINE);
+        headingAccent = new EventGrid.Paragraph("POSSIBILITIES", h1, ThemeManager.BRAND_RED, H1_LINE);
+        headingAccent.setGradient(true);
 
-    private void buildUI() {
-        JPanel content = new JPanel();
-        content.setOpaque(false);
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        subtitle = new EventGrid.Paragraph(
+                "Seminars • Workshops • Hackathons • Cultural Events. Reserve front-row auditorium seats "
+                        + "with real-time seat maps and digital passes.",
+                ThemeManager.font(ThemeManager.Weight.REGULAR, 16), ThemeManager.TEXT_GRAY_300, 24);
+        // max-w-lg (512px) in font-light; the regular face is ~10% wider, so lines break where
+        // the web's do ("...Reserve front-row / auditorium seats...")
+        subtitle.setMaxWidth(563);
 
-        JLabel title1 = new JLabel("IDEAS");
-        title1.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        title1.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel title2 = new JLabel("PEOPLE");
-        title2.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        title2.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel title3 = new JLabel("POSSIBILITIES");
-        title3.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        title3.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel sub = new JLabel("Seminars  •  Workshops  •  Hackathons  •  Cultural Events");
-        sub.setFont(ThemeManager.FONT_BODY);
-        sub.setForeground(ThemeManager.TEXT_SECONDARY);
-
-        StyledButton exploreBtn = new StyledButton("Explore Events →", StyledButton.ButtonStyle.PRIMARY);
-        exploreBtn.setPreferredSize(new Dimension(160, 38));
-        exploreBtn.setMaximumSize(new Dimension(160, 38));
-        exploreBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        exploreBtn.addActionListener(e -> {
-            if (onExplore != null) onExplore.accept(event);
+        exploreButton = new StyledButton("Explore Featured Event", StyledButton.ButtonStyle.PRIMARY);
+        exploreButton.setFont(ThemeManager.font(ThemeManager.Weight.BOLD, 14));
+        exploreButton.setMargin(new Insets(16, 32, 16, 32));
+        exploreButton.setIcon(Icons.get("chevron-right", 16, Color.WHITE));
+        exploreButton.setHorizontalTextPosition(SwingConstants.LEFT);
+        exploreButton.setIconTextGap(10);
+        exploreButton.setGlow(true);
+        Dimension b = exploreButton.getPreferredSize();
+        exploreButton.setPreferredSize(new Dimension(b.width, 52 + 14));   // py-4 + text-sm line, plus glow room
+        exploreButton.addActionListener(e -> {
+            if (this.onExplore != null && this.event != null) {
+                this.onExplore.accept(this.event);
+            }
         });
 
-        content.add(title1);
-        content.add(title2);
-        content.add(title3);
-        content.add(Box.createVerticalStrut(6));
-        content.add(sub);
-        content.add(Box.createVerticalStrut(14));
-        content.add(exploreBtn);
+        add(pill);
+        add(heading);
+        add(headingAccent);
+        add(subtitle);
+        add(exploreButton);
+    }
 
-        add(content, BorderLayout.WEST);
+    /** The event the "Explore Featured Event" button opens. */
+    public void setEvent(Event event) {
+        this.event = event;
+    }
+
+    public Event getEvent() {
+        return event;
+    }
+
+    private int contentWidth(int width) {
+        return Math.max(200, Math.min(CONTENT_MAX, width - 2 * PAD));
+    }
+
+    private int contentHeight(int contentWidth) {
+        return 30 + 16                                   // pill (py-1.5 + border), mb-4
+                + 3 * H1_LINE + 12                       // heading, mb-3
+                + subtitle.heightForWidth(contentWidth) + 32   // subtitle, mb-8
+                + 52;                                    // button
+    }
+
+    @Override
+    public int heightForWidth(int width) {
+        return Math.max(MIN_HEIGHT, contentHeight(contentWidth(width)) + 2 * PAD);
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        int w = getWidth() > 0 ? getWidth() : 1216;
+        return new Dimension(w, heightForWidth(w));
+    }
+
+    @Override
+    public void doLayout() {
+        int cw = contentWidth(getWidth());
+        int y = (getHeight() - contentHeight(cw)) / 2;    // flex-col justify-center
+        Dimension p = pill.getPreferredSize();
+        pill.setBounds(PAD, y, p.width, 30);
+        y += 30 + 16;
+        heading.setBounds(PAD, y, cw, 2 * H1_LINE);
+        y += 2 * H1_LINE;
+        headingAccent.setBounds(PAD, y, cw, H1_LINE);
+        y += H1_LINE + 12;
+        int subH = subtitle.heightForWidth(cw);
+        subtitle.setBounds(PAD, y, cw, subH);
+        y += subH + 32;
+        Dimension b = exploreButton.getPreferredSize();
+        exploreButton.setBounds(PAD - 8, y - 2, b.width, b.height);   // glow room around the button
     }
 
     @Override
     protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        int w = getWidth();
-        int h = getHeight();
-
-        // Dark auditorium banner with stage crowd photography ambient lighting
-        GradientPaint gp = new GradientPaint(
-                0, 0, new Color(42, 14, 16),
-                w, h, new Color(18, 20, 28)
-        );
-        g2.setPaint(gp);
-        g2.fillRoundRect(0, 0, w, h, 16, 16);
-
-        // Subtle stage spotlight on the right half
-        g2.setColor(new Color(255, 68, 56, 16));
-        g2.fillOval(w - 380, -40, 420, 300);
-
-        g2.setColor(ThemeManager.BORDER_CARD);
-        g2.setStroke(new BasicStroke(1.0f));
-        g2.drawRoundRect(0, 0, w - 1, h - 1, 16, 16);
-
+        int arc = ThemeManager.RADIUS_3XL * 2;
+        g2.setColor(ThemeManager.BORDER_CARD);          // border-white/10
+        g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
         g2.dispose();
-        super.paintComponent(g);
+    }
+
+    /** "bg-[#ff382e]/20 border-[#ff382e]/40 rounded-full text-xs font-bold text-[#ff382e]" with a sparkles icon. */
+    private static final class SparklePill extends JLabel {
+        SparklePill(String text) {
+            super(text, Icons.get("sparkles", 13, ThemeManager.BRAND_RED), SwingConstants.LEFT);
+            setFont(ThemeManager.font(ThemeManager.Weight.BOLD, 12));
+            setForeground(ThemeManager.BRAND_RED);
+            setIconTextGap(8);
+            setBorder(BorderFactory.createEmptyBorder(6, 14, 6, 14));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int w = getWidth();
+            int h = getHeight();
+            g2.setColor(new Color(255, 56, 46, 51));
+            g2.fillRoundRect(0, 0, w - 1, h - 1, h, h);
+            g2.setColor(new Color(255, 56, 46, 102));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, h, h);
+            g2.dispose();
+            super.paintComponent(g);
+        }
     }
 }

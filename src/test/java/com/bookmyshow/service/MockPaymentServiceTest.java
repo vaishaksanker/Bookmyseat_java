@@ -78,15 +78,14 @@ class MockPaymentServiceTest {
         Payment failedPayment = new Payment(2, 2, new BigDecimal("399.99"),
                 PaymentStatus.FAILED, "TXN-FAIL");
         when(paymentDAO.create(any())).thenReturn(failedPayment);
-        when(bookingDAO.update(any())).thenAnswer(inv -> inv.getArgument(0));
 
         PaymentResult result = paymentService.processPayment(2, new BigDecimal("399.99"));
 
         assertFalse(result.isSuccess());
         assertEquals(PaymentStatus.FAILED, result.getStatus());
         verify(bookingService, never()).confirmBooking(anyInt());
-        // booking should be marked FAILED
-        verify(bookingDAO).update(argThat(b -> BookingStatus.FAILED.equals(b.getStatus())));
+        // booking should be marked FAILED and its reserved seats released
+        verify(bookingService).failBooking(2);
     }
 
     // =========================================================

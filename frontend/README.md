@@ -7,7 +7,7 @@ An enterprise-grade Java desktop application engineered with **Java 17**, **Java
 
 ## 🌟 Key Highlights & Architectural Features
 
-- **Cinematic Dark Theme UI/UX**: Custom charcoal/near-black canvas (`#0F1117`), vibrant BookMyShow cinematic red (`#E62E4D`), soft card elevations, translucent status badges, and rounded button geometry.
+- **Same UI as the SeminarX web app** ([seminarx-booking.vercel.app](https://seminarx-booking.vercel.app)): every screen mirrors the web page of the same name — its near-black `#050609` canvas, `#ff382e → #ff6835` glow buttons, glass cards, Plus Jakarta Sans type, Lucide icons and Unsplash event photos (downloaded on first view, then cached in `~/.bookmyseat/image-cache`). Like the website, the app opens on the Home page for guests and asks for sign-in only when booking, viewing My Bookings or opening the Faculty Console.
 - **Strict Layered Architecture (MVC / Interface Separation)**:
   - **Zero SQL / Zero JDBC** in any Swing components or UI classes.
   - All screens interact solely with domain service interfaces: `UserService`, `EventService`, `SeatService`, `BookingService`, `PaymentService`, and `TicketService`.
@@ -36,7 +36,12 @@ An enterprise-grade Java desktop application engineered with **Java 17**, **Java
 - **JDK 17** or newer installed.
 - **Apache Maven 3.9+** (installed and in PATH, or use the Maven binary located in `Local\Programs\apache-maven-3.9.6\bin`).
 
-This frontend lives in the `frontend/` folder of the repository; the root `pom.xml` builds the backend. Run every command below from the `frontend/` folder:
+This frontend lives in the `frontend/` folder of the repository and runs on the backend in the repository root. Install the backend once (and again whenever it changes), from the repository root:
+```bash
+mvn install -DskipTests
+```
+
+Then run every command below from the `frontend/` folder:
 ```bash
 cd frontend
 ```
@@ -45,7 +50,7 @@ cd frontend
 ```bash
 mvn clean test
 ```
-*Executes all 12 automated unit tests across authentication, event searching, seat conflict handling, and cancellation workflows.*
+*Runs 27 tests: the demo-mode services, plus the UI services running on the real backend and an in-memory database (login, registration, search, seat maps, paid and free bookings, declined payments, cancellations, organizer events, analytics).*
 
 ### 2. Run the Application Directly
 ```bash
@@ -58,18 +63,31 @@ mvn package -DskipTests
 java -jar target/seminar-hall-booking-1.0.0.jar
 ```
 
+### Where data is stored
+The app uses the real backend services and saves everything to a database:
+- **Default:** an embedded H2 database at `~/.bookmyseat/bookmyseat.mv.db`, created and filled with the demo accounts and events on first start. Delete that file to reset the demo data.
+- **PostgreSQL:** add `-Dbookmyseat.db.url=jdbc:postgresql://localhost:5432/bookmyseat -Dbookmyseat.db.user=postgres -Dbookmyseat.db.password=<password>` to the `java` command (see the root `README.md`).
+- **Demo mode (no database):** add `-Dseminarhall.mode=mock` to run on in-memory sample data. If the database cannot be opened, the app falls back to demo mode and says so.
+
+Payments are simulated by the backend: totals ending in `.99` are declined, which is handy for testing the failure path. Free events are confirmed without a payment.
+
 ---
 
 ## 🔑 Quick Demo Credentials
 
-The application includes built-in quick-fill buttons on the login screen for instant demonstration:
+The login screen is pre-filled with the student account; the "Use the organizer demo account" line under it switches to the organizer:
 
 | Role | Email | Password | Access Rights |
 | :--- | :--- | :--- | :--- |
-| **Student** | `student@college.edu` | `student123` | Student discovery homepage, auditorium seat booking, e-pass view, booking history |
-| **Organizer / Admin** | `organizer@college.edu` | `admin123` | Organizer control center, occupancy analytics, event creation & scheduling, bookings ledger |
+| **Student** | `student@college.edu` | `student123` | Home, seat booking, digital passes, My Bookings |
+| **Faculty Coordinator (admin)** | `organizer@college.edu` | `admin123` | Faculty Console: analytics, scheduling, editing and cancelling any department's events |
 
-*You can also click **"Register here"** on the login screen to register brand-new accounts with immediate validation and persistence.*
+*Click **Register** on the login screen to create a new student account.*
+
+### Credits
+- Font: [Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans), SIL Open Font License 1.1 (`src/main/resources/fonts/OFL.txt`).
+- Icons: [Lucide](https://lucide.dev), ISC License (`src/main/resources/icons/lucide/LICENSE`), converted from the web app's `lucide-react` package.
+- Event photos: Unsplash, the same images the web app uses.
 
 ---
 
