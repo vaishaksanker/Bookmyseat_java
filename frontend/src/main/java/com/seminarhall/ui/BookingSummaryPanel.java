@@ -2,29 +2,52 @@ package com.seminarhall.ui;
 
 import com.seminarhall.model.Event;
 import com.seminarhall.model.Seat;
-import com.seminarhall.ui.components.StepIndicatorBar;
-import com.seminarhall.ui.components.StyledButton;
+import com.seminarhall.ui.ThemeManager.Weight;
+import com.seminarhall.ui.components.BookingFlowParts;
+import com.seminarhall.ui.components.BookingFlowParts.Card;
+import com.seminarhall.ui.components.BookingFlowParts.DarkButton;
+import com.seminarhall.ui.components.BookingFlowParts.FlowButton;
+import com.seminarhall.ui.components.BookingFlowParts.Page;
+import com.seminarhall.ui.components.BookingFlowParts.Pill;
+import com.seminarhall.ui.components.BookingFlowParts.Row;
+import com.seminarhall.ui.components.BookingFlowParts.Stack;
+import com.seminarhall.ui.components.BookingFlowParts.Text;
+import com.seminarhall.ui.components.BookingFlowParts.Wrap;
+import com.seminarhall.ui.components.BookingFlowParts.WrapText;
+import com.seminarhall.ui.components.EventVisuals;
+import com.seminarhall.ui.components.PhotoPanel;
+import com.seminarhall.ui.components.Tag;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
+/**
+ * The web app's OrderSummaryPage ("Booking Summary"): the event card with its photo, the selected
+ * seats, the price breakdown, "← Modify Seats" and "Proceed to Payment".
+ */
 public class BookingSummaryPanel extends JPanel {
+    /** max-w-3xl (768) with px-8 */
+    private static final int CONTENT_W = 768 - 64;
+    private static final int HALF_CARD_INNER = (CONTENT_W - 24) / 2 - 50;
+
     private final NavigationController navController;
     private Event currentEvent;
     private List<Seat> currentSeats;
 
-    private StepIndicatorBar stepBar;
-    private JLabel eventTitleLbl;
-    private JLabel eventCategoryLbl;
-    private JLabel eventTimeLbl;
-    private JLabel venueLbl;
-    private JPanel selectedSeatsChips;
-    private JLabel pricePerSeatLbl;
-    private JLabel seatCountLbl;
-    private JLabel subtotalLbl;
-    private JLabel grandTotalLbl;
+    private Page page;
+    private PhotoPanel photo;
+    private JPanel categoryHolder;
+    private WrapText eventTitleLbl;
+    private Text eventTimeLbl;
+    private Text venueLbl;
+    private Text seatsTitleLbl;
+    private Wrap selectedSeatsChips;
+    private Text pricePerSeatLbl;
+    private Text seatCountLbl;
+    private Text subtotalLbl;
+    private Text grandTotalLbl;
 
     public BookingSummaryPanel(NavigationController navController) {
         this.navController = navController;
@@ -37,190 +60,116 @@ public class BookingSummaryPanel extends JPanel {
     }
 
     private void buildUI() {
-        // Step Indicator Top Bar (Step 2: Booking Summary)
-        JPanel topHeader = new JPanel(new BorderLayout());
-        topHeader.setOpaque(false);
-        topHeader.setBorder(BorderFactory.createEmptyBorder(12, 24, 8, 24));
+        Stack content = new Stack();
+        content.row(BookingFlowParts.backLink("← Back to Seat Selection", navController::goBack), 0, Stack.Align.LEFT);
+        content.row(BookingFlowParts.pageTitle("Booking Summary"), 8);
+        content.row(buildEventCard(), 24);
 
-        stepBar = new StepIndicatorBar(2);
-        topHeader.add(stepBar, BorderLayout.CENTER);
-        add(topHeader, BorderLayout.NORTH);
+        // grid sm:grid-cols-2 gap-6
+        Row cards = new Row(Row.VAlign.STRETCH);
+        cards.grow(buildSeatsCard(), 0, 1);
+        cards.grow(buildPriceCard(), 24, 1);
+        content.row(cards, 24);
 
-        // Center card container matching Screen 6
-        JPanel center = new JPanel(new GridBagLayout());
-        center.setOpaque(false);
+        DarkButton backBtn = new DarkButton("← Modify Seats");
+        backBtn.addActionListener(e -> navController.goBack());
 
-        JPanel card = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
-                g2.setColor(ThemeManager.BORDER_CARD);
-                g2.setStroke(new BasicStroke(1.0f));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        card.setOpaque(false);
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setPreferredSize(new Dimension(560, 480));
-        card.setBorder(BorderFactory.createEmptyBorder(24, 28, 24, 28));
-
-        // Top event info with thumbnail
-        JPanel topRow = new JPanel(new BorderLayout(14, 0));
-        topRow.setOpaque(false);
-
-        JPanel thumb = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                GradientPaint gp = new GradientPaint(0, 0, new Color(50, 20, 20), getWidth(), getHeight(), new Color(20, 22, 30));
-                g2.setPaint(gp);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.setColor(Color.WHITE);
-                g2.setFont(new Font("Segoe UI", Font.PLAIN, 24));
-                g2.drawString("🎙", (getWidth() - 20) / 2, (getHeight() + 16) / 2);
-                g2.dispose();
-            }
-        };
-        thumb.setPreferredSize(new Dimension(80, 80));
-        thumb.setOpaque(false);
-
-        JPanel info = new JPanel();
-        info.setOpaque(false);
-        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
-
-        eventTitleLbl = new JLabel("AI in Modern World");
-        eventTitleLbl.setFont(ThemeManager.FONT_HEADER);
-        eventTitleLbl.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        eventCategoryLbl = new JLabel("Technical Seminar");
-        eventCategoryLbl.setFont(ThemeManager.FONT_SMALL);
-        eventCategoryLbl.setForeground(ThemeManager.STATUS_BLUE);
-
-        eventTimeLbl = new JLabel("Dec 10, 2024 • 10:00 AM - 12:00 PM");
-        eventTimeLbl.setFont(ThemeManager.FONT_SMALL);
-        eventTimeLbl.setForeground(ThemeManager.TEXT_MUTED);
-
-        venueLbl = new JLabel("Seminar Hall A");
-        venueLbl.setFont(ThemeManager.FONT_SMALL);
-        venueLbl.setForeground(ThemeManager.TEXT_MUTED);
-
-        info.add(eventTitleLbl);
-        info.add(Box.createVerticalStrut(2));
-        info.add(eventCategoryLbl);
-        info.add(Box.createVerticalStrut(4));
-        info.add(eventTimeLbl);
-        info.add(Box.createVerticalStrut(2));
-        info.add(venueLbl);
-
-        topRow.add(thumb, BorderLayout.WEST);
-        topRow.add(info, BorderLayout.CENTER);
-
-        // Middle split: Left Selected Seats, Right Price Details
-        JPanel midRow = new JPanel(new GridLayout(1, 2, 24, 0));
-        midRow.setOpaque(false);
-        midRow.setBorder(BorderFactory.createEmptyBorder(20, 0, 16, 0));
-
-        // Left: Selected Seats
-        JPanel leftBox = new JPanel();
-        leftBox.setOpaque(false);
-        leftBox.setLayout(new BoxLayout(leftBox, BoxLayout.Y_AXIS));
-
-        JLabel selTitle = new JLabel("Selected Seats");
-        selTitle.setFont(ThemeManager.FONT_BODY_BOLD);
-        selTitle.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        selectedSeatsChips = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
-        selectedSeatsChips.setOpaque(false);
-
-        leftBox.add(selTitle);
-        leftBox.add(Box.createVerticalStrut(8));
-        leftBox.add(selectedSeatsChips);
-
-        // Right: Price Details
-        JPanel rightBox = new JPanel();
-        rightBox.setOpaque(false);
-        rightBox.setLayout(new BoxLayout(rightBox, BoxLayout.Y_AXIS));
-
-        JLabel priceTitle = new JLabel("Price Details");
-        priceTitle.setFont(ThemeManager.FONT_BODY_BOLD);
-        priceTitle.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JPanel pGrid = new JPanel(new GridLayout(4, 2, 8, 8));
-        pGrid.setOpaque(false);
-
-        pricePerSeatLbl = new JLabel("₹0", SwingConstants.RIGHT);
-        seatCountLbl = new JLabel("0", SwingConstants.RIGHT);
-        subtotalLbl = new JLabel("₹0", SwingConstants.RIGHT);
-        grandTotalLbl = new JLabel("₹0", SwingConstants.RIGHT);
-
-        for (JLabel l : new JLabel[]{pricePerSeatLbl, seatCountLbl, subtotalLbl}) {
-            l.setFont(ThemeManager.FONT_SMALL);
-            l.setForeground(ThemeManager.TEXT_SECONDARY);
-        }
-        grandTotalLbl.setFont(ThemeManager.FONT_HEADER);
-        grandTotalLbl.setForeground(ThemeManager.STATUS_GREEN);
-
-        pGrid.add(createCaption("Ticket Price (per seat)"));
-        pGrid.add(pricePerSeatLbl);
-        pGrid.add(createCaption("Number of Seats"));
-        pGrid.add(seatCountLbl);
-        pGrid.add(createCaption("Subtotal"));
-        pGrid.add(subtotalLbl);
-        pGrid.add(new JLabel("Total Amount") {{
-            setFont(ThemeManager.FONT_BODY_BOLD);
-            setForeground(ThemeManager.TEXT_PRIMARY);
-        }});
-        pGrid.add(grandTotalLbl);
-
-        rightBox.add(priceTitle);
-        rightBox.add(Box.createVerticalStrut(8));
-        rightBox.add(pGrid);
-
-        midRow.add(leftBox);
-        midRow.add(rightBox);
-
-        // Buttons row
-        JPanel btnRow = new JPanel(new BorderLayout(14, 0));
-        btnRow.setOpaque(false);
-
-        StyledButton backBtn = new StyledButton("← Back", StyledButton.ButtonStyle.SECONDARY);
-        backBtn.setPreferredSize(new Dimension(100, 42));
-        backBtn.addActionListener(e -> {
-            if (currentEvent != null) {
-                navController.startSeatSelection(currentEvent);
-            }
-        });
-
-        StyledButton continueBtn = new StyledButton("Continue to Payment →", StyledButton.ButtonStyle.PRIMARY);
+        // glow-primary text-sm font-bold px-8 py-3.5 rounded-xl
+        FlowButton continueBtn = new FlowButton("Proceed to Payment", 14, 14, 32, ThemeManager.RADIUS_XL, 15);
         continueBtn.addActionListener(e -> {
             if (currentEvent != null && currentSeats != null) {
                 navController.proceedToPayment(currentEvent, currentSeats);
             }
         });
 
-        btnRow.add(backBtn, BorderLayout.WEST);
-        btnRow.add(continueBtn, BorderLayout.CENTER);
+        Row buttons = new Row(Row.VAlign.CENTER);
+        buttons.cell(backBtn, 0);
+        buttons.grow(Box.createHorizontalGlue(), 0, 1);
+        buttons.cell(continueBtn, 0);
+        content.row(buttons, 24 + 16);
 
-        card.add(topRow);
-        card.add(midRow);
-        card.add(Box.createVerticalStrut(10));
-        card.add(btnRow);
-
-        center.add(card);
-        add(center, BorderLayout.CENTER);
+        // max-w-3xl mx-auto px-8 py-10
+        page = new Page(content, 768, 32, 40, 40);
+        add(page.scroller(), BorderLayout.CENTER);
     }
 
-    private JLabel createCaption(String txt) {
-        JLabel l = new JLabel(txt);
-        l.setFont(ThemeManager.FONT_SMALL);
-        l.setForeground(ThemeManager.TEXT_MUTED);
-        return l;
+    /** bg-[#10131d] rounded-3xl p-6 flex gap-5 items-center: photo, category tag, title, date and venue. */
+    private JComponent buildEventCard() {
+        photo = new PhotoPanel(EventVisuals.AUDITORIUM_STAGE, ThemeManager.RADIUS_2XL, PhotoPanel.Overlay.NONE);
+        photo.setPreferredSize(new Dimension(112, 112));
+
+        categoryHolder = new JPanel(new BorderLayout());
+        categoryHolder.setOpaque(false);
+        eventTitleLbl = new WrapText(Weight.BOLD, 20, ThemeManager.TEXT_PRIMARY, 28, CONTENT_W - 50 - 112 - 20);
+        eventTimeLbl = BookingFlowParts.iconLine("calendar", ThemeManager.BRAND_RED, "", 12, ThemeManager.TEXT_GRAY_300, 16);
+        venueLbl = BookingFlowParts.iconLine("map-pin", ThemeManager.BRAND_RED, "", 12, ThemeManager.TEXT_GRAY_300, 16);
+
+        Stack info = new Stack();
+        info.row(categoryHolder, 0, Stack.Align.LEFT);
+        info.row(eventTitleLbl, 6);
+        info.row(eventTimeLbl, 8);
+        info.row(venueLbl, 4);
+
+        Row row = new Row(Row.VAlign.CENTER);
+        row.fixed(photo, 0, 112);
+        row.grow(info, 20, 1);
+
+        Card card = new Card(ThemeManager.RADIUS_3XL, 24);
+        card.add(row, BorderLayout.CENTER);
+        return card;
+    }
+
+    private JComponent buildSeatsCard() {
+        seatsTitleLbl = new Text("Selected Seats (0)", Weight.BOLD, 14, ThemeManager.TEXT_PRIMARY, 20);
+        selectedSeatsChips = new Wrap(HALF_CARD_INNER, 8);
+        Stack stack = new Stack();
+        stack.row(seatsTitleLbl, 0);
+        stack.row(selectedSeatsChips, 12);
+        Card card = new Card(ThemeManager.RADIUS_3XL, 24);
+        card.add(stack, BorderLayout.CENTER);
+        return card;
+    }
+
+    /** "Price Breakdown": space-y-2 text-xs text-gray-300, total in text-base font-bold. */
+    private JComponent buildPriceCard() {
+        pricePerSeatLbl = value();
+        seatCountLbl = value();
+        subtotalLbl = value();
+        grandTotalLbl = new Text("₹0", Weight.BOLD, 16, ThemeManager.BRAND_RED, 24);
+
+        Row total = new Row(Row.VAlign.TOP);
+        total.grow(new Text("Total Amount", Weight.BOLD, 16, ThemeManager.TEXT_PRIMARY, 24), 0, 1);
+        total.cell(grandTotalLbl, 8);
+
+        Stack stack = new Stack();
+        stack.row(new Text("Price Breakdown", Weight.BOLD, 14, ThemeManager.TEXT_PRIMARY, 20), 0);
+        stack.row(priceRow("Ticket Price (per seat)", pricePerSeatLbl), 12);
+        stack.row(priceRow("Seats Selected", seatCountLbl), 8);
+        stack.row(priceRow("Subtotal", subtotalLbl), 8);
+        stack.row(BookingFlowParts.rule(BookingFlowParts.CARD_BORDER), 8);
+        stack.row(total, 12);
+        Card card = new Card(ThemeManager.RADIUS_3XL, 24);
+        card.add(stack, BorderLayout.CENTER);
+        return card;
+    }
+
+    private static Text value() {
+        return new Text("", Weight.SEMIBOLD, 12, ThemeManager.TEXT_PRIMARY, 16);
+    }
+
+    private static Row priceRow(String label, Text value) {
+        Row row = new Row(Row.VAlign.TOP);
+        row.grow(new Text(label, Weight.REGULAR, 12, ThemeManager.TEXT_GRAY_300, 16), 0, 1);
+        row.cell(value, 8);
+        return row;
+    }
+
+    /** bg-blue-600/90 text-white font-extrabold text-[9px] px-2.5 py-0.5 rounded tracking-wider */
+    private static Tag categoryTag(Event event) {
+        Tag tag = new Tag(EventVisuals.tagLabel(event.getCategory()), new Color(37, 99, 235, 230), Color.WHITE, 4,
+                BookingFlowParts.tracked(ThemeManager.font(Weight.EXTRABOLD, 9), 0.05f));
+        tag.setBorder(new EmptyBorder(2, 10, 2, 10));
+        return tag;
     }
 
     public void loadSummary(Event event, List<Seat> selectedSeats) {
@@ -228,28 +177,31 @@ public class BookingSummaryPanel extends JPanel {
         this.currentSeats = selectedSeats;
         if (event == null || selectedSeats == null) return;
 
+        photo.setUrl(EventVisuals.imageFor(event));
+        categoryHolder.removeAll();
+        categoryHolder.add(categoryTag(event), BorderLayout.WEST);
         eventTitleLbl.setText(event.getTitle());
-        eventCategoryLbl.setText(event.getCategory().getDisplayName());
-        eventTimeLbl.setText(event.getDate().format(DateTimeFormatter.ofPattern("MMM dd, yyyy")) + " • " +
-                event.getStartTime().format(DateTimeFormatter.ofPattern("hh:mm a")) + " - " +
-                event.getEndTime().format(DateTimeFormatter.ofPattern("hh:mm a")));
-        venueLbl.setText(event.getSeminarHall());
+        eventTimeLbl.setText(BookingFlowParts.date(event) + " · " + BookingFlowParts.timeRange(event));
+        String dept = event.getOrganizerName();
+        venueLbl.setText(event.getSeminarHall() + (dept != null && !dept.isBlank() ? " (" + dept + ")" : ""));
 
+        seatsTitleLbl.setText("Selected Seats (" + selectedSeats.size() + ")");
         selectedSeatsChips.removeAll();
         for (Seat s : selectedSeats) {
-            JLabel chip = new JLabel(s.getSeatIdentifier());
-            chip.setFont(ThemeManager.FONT_SMALL_BOLD);
-            chip.setForeground(Color.WHITE);
-            chip.setBackground(ThemeManager.BG_PRIMARY);
-            chip.setOpaque(true);
-            chip.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+            // bg-[#1a1e2d] border-[#2a3046] text-xs font-bold px-3 py-1.5 rounded-xl
+            Pill chip = new Pill(ThemeManager.RADIUS_XL, 6, 12, BookingFlowParts.CHIP_BG, BookingFlowParts.CHIP_BORDER);
+            chip.add(new Text(s.getSeatIdentifier(), Weight.BOLD, 12, ThemeManager.TEXT_PRIMARY, 16));
             selectedSeatsChips.add(chip);
         }
 
         double total = selectedSeats.stream().mapToDouble(Seat::getPrice).sum();
-        pricePerSeatLbl.setText("₹" + String.format("%.0f", event.getTicketPrice()));
+        pricePerSeatLbl.setText(EventVisuals.priceLabel(event.getTicketPrice()));
         seatCountLbl.setText(String.valueOf(selectedSeats.size()));
-        subtotalLbl.setText("₹" + String.format("%.0f", total));
-        grandTotalLbl.setText("₹" + String.format("%.0f", total));
+        subtotalLbl.setText(BookingFlowParts.rupees(total));
+        grandTotalLbl.setText(BookingFlowParts.rupees(total));
+
+        page.revalidate();
+        page.repaint();
+        page.scrollToTop();
     }
 }

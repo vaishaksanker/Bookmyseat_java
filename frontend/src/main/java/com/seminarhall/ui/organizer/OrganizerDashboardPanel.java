@@ -1,59 +1,62 @@
 package com.seminarhall.ui.organizer;
 
-import com.seminarhall.model.*;
+import com.seminarhall.model.Booking;
 import com.seminarhall.model.Event;
+import com.seminarhall.model.EventCategory;
+import com.seminarhall.model.OrganizerAnalytics;
 import com.seminarhall.service.BookingService;
 import com.seminarhall.service.EventService;
 import com.seminarhall.service.ServiceFactory;
 import com.seminarhall.ui.NavigationController;
 import com.seminarhall.ui.ThemeManager;
+import com.seminarhall.ui.ThemeManager.Weight;
+import com.seminarhall.ui.components.EventVisuals;
+import com.seminarhall.ui.components.MetricCard;
+import com.seminarhall.ui.components.SidebarNavigation;
 import com.seminarhall.ui.components.StyledButton;
-import com.seminarhall.ui.components.StyledTextField;
 
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
+/**
+ * Faculty Console (web OrganizerDashboardPage, ManageEventsPage, CreateEventPage). The dashboard shows
+ * the console sidebar and the "Auditorium Analytics" tiles and charts from the real services; Manage
+ * Events and the Schedule form are full-width pages of their own, as on the web.
+ */
 public class OrganizerDashboardPanel extends JPanel implements NavigationController.RefreshableScreen {
+    private static final String VIEW_DASHBOARD = "VIEW_DASHBOARD";
+    private static final String VIEW_MANAGE = "VIEW_MANAGE";
+    private static final String VIEW_CREATE = "VIEW_CREATE";
+
     private final NavigationController navController;
     private final EventService eventService;
     private final BookingService bookingService;
 
-    private JPanel dynamicContentArea;
-    private CardLayout contentCardLayout;
+    private final CardLayout views = new CardLayout();
+    private final JPanel viewHolder = new JPanel(views);
+    private SidebarNavigation sidebar;
+    private JScrollPane dashboardScroll;
+    private final ConsoleUi.Banner dashboardError = new ConsoleUi.Banner();
 
-    private static final String CARD_DASHBOARD = "CARD_DASHBOARD";
-    private static final String CARD_MANAGE_EVENTS = "CARD_MANAGE_EVENTS";
-    private static final String CARD_CREATE_EVENT = "CARD_CREATE_EVENT";
-    private static final String CARD_BOOKINGS = "CARD_BOOKINGS";
+    private final MetricCard totalEventsCard = new MetricCard("Total Events", Color.WHITE);
+    private final MetricCard upcomingCard = new MetricCard("Upcoming", ThemeManager.EMERALD_400);
+    private final MetricCard totalBookingsCard = new MetricCard("Total Bookings", ThemeManager.BRAND_RED);
+    private final MetricCard availableSeatsCard = new MetricCard("Available Seats", ThemeManager.BLUE_400);
+    private final DashboardCharts.BookingsBarChart bookingsChart = new DashboardCharts.BookingsBarChart();
+    private final DashboardCharts.CategoryDonutChart categoryChart = new DashboardCharts.CategoryDonutChart();
 
-    // KPI labels
-    private JLabel totalEventsVal;
-    private JLabel upcomingVal;
-    private JLabel totalBookingsVal;
-    private JLabel availableSeatsVal;
+    private final ManageEventsView manageView;
+    private final CreateEventView createView;
 
-    // Tables
-    private DefaultTableModel recentBookingsModel;
-    private JTable recentBookingsTable;
-    private DefaultTableModel manageEventsModel;
-    private JTable manageEventsTable;
-
-    // Create Event inputs
-    private StyledTextField titleInput;
-    private JComboBox<EventCategory> catCombo;
-    private StyledTextField descInput;
-    private StyledTextField dateInput;
-    private StyledTextField startInput;
-    private StyledTextField endInput;
-    private StyledTextField venueInput;
-    private StyledTextField hallInput;
-    private StyledTextField capacityInput;
-    private StyledTextField priceInput;
+    private int loadGeneration;
 
     public OrganizerDashboardPanel(NavigationController navController) {
         this.navController = navController;
@@ -61,558 +64,339 @@ public class OrganizerDashboardPanel extends JPanel implements NavigationControl
         this.bookingService = ServiceFactory.getBookingService();
 
         setName(NavigationController.SCREEN_ORGANIZER_DASHBOARD);
-        setOpaque(false);
+        setOpaque(true);
+        setBackground(ThemeManager.BG_PAGE);
         setLayout(new BorderLayout());
 
-        buildUI();
-    }
-
-    private void buildUI() {
-        // Left Organizer Sidebar matching Screens 10, 11, 12
-        JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setBackground(ThemeManager.BG_DARKEST);
-        sidebar.setPreferredSize(new Dimension(210, 700));
-        sidebar.setBorder(BorderFactory.createEmptyBorder(18, 14, 18, 14));
-
-        JPanel topSide = new JPanel();
-        topSide.setOpaque(false);
-        topSide.setLayout(new BoxLayout(topSide, BoxLayout.Y_AXIS));
-
-        // SeminarX Logo & Brand
-        JPanel brandBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        brandBox.setOpaque(false);
-        JLabel sxIcon = new JLabel("SX") {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                GradientPaint gp = new GradientPaint(0, 0, ThemeManager.ACCENT_RED, getWidth(), getHeight(), ThemeManager.ACCENT_ORANGE);
-                g2.setPaint(gp);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
-                g2.setColor(Color.WHITE);
-                g2.setFont(ThemeManager.FONT_SMALL_BOLD);
-                FontMetrics fm = g2.getFontMetrics();
-                g2.drawString("SX", (getWidth() - fm.stringWidth("SX")) / 2, (getHeight() + fm.getAscent() - fm.getDescent()) / 2);
-                g2.dispose();
-            }
-        };
-        sxIcon.setPreferredSize(new Dimension(24, 24));
-        sxIcon.setOpaque(false);
-
-        JLabel brandLbl = new JLabel("SeminarX");
-        brandLbl.setFont(ThemeManager.FONT_HEADER);
-        brandLbl.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        brandBox.add(sxIcon);
-        brandBox.add(brandLbl);
-        topSide.add(brandBox);
-        topSide.add(Box.createVerticalStrut(24));
-
-        // Nav Menu items: Dashboard, Manage Events, Create Event, Bookings, Attendees, Analytics
-        JButton dashBtn = createSidebarItem("📊  Dashboard", true, () -> contentCardLayout.show(dynamicContentArea, CARD_DASHBOARD));
-        JButton manageBtn = createSidebarItem("🎪  Manage Events", false, () -> {
-            loadManageEvents();
-            contentCardLayout.show(dynamicContentArea, CARD_MANAGE_EVENTS);
+        manageView = new ManageEventsView(new ManageEventsView.Actions() {
+            @Override public void showDashboard() { showDashboardView(); }
+            @Override public void showCreate() { showCreateView(); }
+            @Override public void edit(Event event) { showEditView(event); }
+            @Override public void delete(Event event) { deleteEvent(event); }
         });
-        JButton createBtn = createSidebarItem("➕  Create Event", false, () -> contentCardLayout.show(dynamicContentArea, CARD_CREATE_EVENT));
-        JButton bookingsBtn = createSidebarItem("📑  Bookings", false, () -> contentCardLayout.show(dynamicContentArea, CARD_BOOKINGS));
-
-        topSide.add(dashBtn);
-        topSide.add(Box.createVerticalStrut(4));
-        topSide.add(manageBtn);
-        topSide.add(Box.createVerticalStrut(4));
-        topSide.add(createBtn);
-        topSide.add(Box.createVerticalStrut(4));
-        topSide.add(bookingsBtn);
-
-        sidebar.add(topSide, BorderLayout.NORTH);
-
-        // Bottom User profile + Logout
-        JPanel botSide = new JPanel();
-        botSide.setOpaque(false);
-        botSide.setLayout(new BoxLayout(botSide, BoxLayout.Y_AXIS));
-
-        JLabel orgUser = new JLabel("👤  Organizer");
-        orgUser.setFont(ThemeManager.FONT_BODY_BOLD);
-        orgUser.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel facTitle = new JLabel("Faculty Coordinator");
-        facTitle.setFont(ThemeManager.FONT_SMALL);
-        facTitle.setForeground(ThemeManager.TEXT_MUTED);
-
-        StyledButton logoutBtn = new StyledButton("Sign Out", StyledButton.ButtonStyle.SECONDARY);
-        logoutBtn.setMaximumSize(new Dimension(180, 32));
-        logoutBtn.addActionListener(e -> navController.logout());
-
-        botSide.add(orgUser);
-        botSide.add(facTitle);
-        botSide.add(Box.createVerticalStrut(10));
-        botSide.add(logoutBtn);
-
-        sidebar.add(botSide, BorderLayout.SOUTH);
-        add(sidebar, BorderLayout.WEST);
-
-        // Center Content Area
-        contentCardLayout = new CardLayout();
-        dynamicContentArea = new JPanel(contentCardLayout);
-        dynamicContentArea.setOpaque(false);
-
-        dynamicContentArea.add(buildDashboardPanel(), CARD_DASHBOARD);
-        dynamicContentArea.add(buildManageEventsPanel(), CARD_MANAGE_EVENTS);
-        dynamicContentArea.add(buildCreateEventPanel(), CARD_CREATE_EVENT);
-        dynamicContentArea.add(buildBookingsPanel(), CARD_BOOKINGS);
-
-        add(dynamicContentArea, BorderLayout.CENTER);
-    }
-
-    private JButton createSidebarItem(String title, boolean active, Runnable action) {
-        JButton btn = new JButton(title);
-        btn.setFont(ThemeManager.FONT_BODY);
-        btn.setForeground(active ? Color.WHITE : ThemeManager.TEXT_SECONDARY);
-        btn.setBackground(active ? ThemeManager.ACCENT_RED : new Color(0, 0, 0, 0));
-        btn.setHorizontalAlignment(SwingConstants.LEFT);
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setOpaque(active);
-        btn.setMaximumSize(new Dimension(180, 36));
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.addActionListener(e -> action.run());
-        return btn;
-    }
-
-    // -------------------------------------------------------------
-    // SCREEN 10: ORGANIZER DASHBOARD (KPIS, CHARTS, RECENT BOOKINGS)
-    // -------------------------------------------------------------
-    private JPanel buildDashboardPanel() {
-        JPanel p = new JPanel();
-        p.setOpaque(false);
-        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        p.setBorder(BorderFactory.createEmptyBorder(20, 24, 24, 24));
-
-        JLabel title = new JLabel("Dashboard");
-        title.setFont(ThemeManager.FONT_HEADER_XL);
-        title.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        JLabel sub = new JLabel("Overview of your events and bookings");
-        sub.setFont(ThemeManager.FONT_BODY);
-        sub.setForeground(ThemeManager.TEXT_MUTED);
-
-        p.add(title);
-        p.add(Box.createVerticalStrut(2));
-        p.add(sub);
-        p.add(Box.createVerticalStrut(18));
-
-        // 4 KPI Cards (Screen 10: 12 Total Events, 5 Upcoming, 320 Total Bookings, 450 Available Seats)
-        JPanel kpiGrid = new JPanel(new GridLayout(1, 4, 14, 0));
-        kpiGrid.setOpaque(false);
-        kpiGrid.setMaximumSize(new Dimension(1600, 80));
-
-        totalEventsVal = new JLabel("12");
-        upcomingVal = new JLabel("5");
-        totalBookingsVal = new JLabel("320");
-        availableSeatsVal = new JLabel("450");
-
-        kpiGrid.add(createMiniKpiCard("📅", "12", "Total Events", ThemeManager.STATUS_BLUE));
-        kpiGrid.add(createMiniKpiCard("⚡", "5", "Upcoming", ThemeManager.STATUS_GREEN));
-        kpiGrid.add(createMiniKpiCard("🎟", "320", "Total Bookings", ThemeManager.ACCENT_RED));
-        kpiGrid.add(createMiniKpiCard("💺", "450", "Available Seats", ThemeManager.STATUS_GREEN));
-
-        p.add(kpiGrid);
-        p.add(Box.createVerticalStrut(20));
-
-        // Visual Charts Mock: Left Event Bookings Bar Chart, Right Events by Category Donut Chart
-        JPanel chartsRow = new JPanel(new GridLayout(1, 2, 16, 0));
-        chartsRow.setOpaque(false);
-        chartsRow.setMaximumSize(new Dimension(1600, 180));
-
-        // Bar Chart
-        JPanel barChart = new JPanel(new BorderLayout()) {
+        createView = new CreateEventView(eventService, new CreateEventView.Listener() {
             @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                g2.setColor(ThemeManager.BORDER_CARD);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
-
-                // Title
-                g2.setColor(ThemeManager.TEXT_PRIMARY);
-                g2.setFont(ThemeManager.FONT_BODY_BOLD);
-                g2.drawString("Event Bookings (Last 6 Months)", 16, 26);
-
-                // Bars
-                int[] heights = {40, 65, 50, 85, 70, 95};
-                String[] months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun"};
-                int startX = 24;
-                int barW = 20;
-                int baseY = getHeight() - 36;
-                for (int i = 0; i < heights.length; i++) {
-                    g2.setColor(i % 2 == 0 ? ThemeManager.STATUS_BLUE : ThemeManager.STATUS_PURPLE);
-                    g2.fillRoundRect(startX + (i * 54), baseY - heights[i], barW, heights[i], 4, 4);
-                    g2.setColor(ThemeManager.TEXT_MUTED);
-                    g2.setFont(ThemeManager.FONT_SMALL);
-                    g2.drawString(months[i], startX + (i * 54), baseY + 18);
-                }
-                g2.dispose();
-                super.paintComponent(g);
+            public void onCancel() {
+                showManageView();   // web: onCancel → MANAGE_EVENTS
             }
-        };
-        barChart.setOpaque(false);
 
-        // Donut Chart
-        JPanel donutChart = new JPanel(new BorderLayout()) {
             @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 12, 12);
-                g2.setColor(ThemeManager.BORDER_CARD);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 12, 12);
-
-                g2.setColor(ThemeManager.TEXT_PRIMARY);
-                g2.setFont(ThemeManager.FONT_BODY_BOLD);
-                g2.drawString("Events by Category", 16, 26);
-
-                // Donut arc slices
-                int cx = 80;
-                int cy = 100;
-                int r = 50;
-                g2.setColor(ThemeManager.STATUS_BLUE);
-                g2.fillArc(cx - r, cy - r, r * 2, r * 2, 0, 140);
-                g2.setColor(ThemeManager.STATUS_ORANGE);
-                g2.fillArc(cx - r, cy - r, r * 2, r * 2, 140, 100);
-                g2.setColor(ThemeManager.STATUS_PURPLE);
-                g2.fillArc(cx - r, cy - r, r * 2, r * 2, 240, 120);
-
-                // Cut donut hole
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillOval(cx - 25, cy - 25, 50, 50);
-
-                // Center percentage
-                g2.setColor(ThemeManager.TEXT_PRIMARY);
-                g2.setFont(ThemeManager.FONT_BODY_BOLD);
-                g2.drawString("52%", cx - 12, cy + 5);
-
-                // Legend on right
-                int legX = 180;
-                drawLeg(g2, legX, 70, ThemeManager.STATUS_BLUE, "Technical (52%)");
-                drawLeg(g2, legX, 95, ThemeManager.STATUS_ORANGE, "Workshop (28%)");
-                drawLeg(g2, legX, 120, ThemeManager.STATUS_PURPLE, "Cultural (20%)");
-
-                g2.dispose();
-                super.paintComponent(g);
+            public void onSaved(Event saved, boolean updated) {
+                showManageView();
+                manageView.showSuccess(updated ? "Event updated successfully!" : "Event published successfully!");
+                refreshData();
             }
+        });
 
-            private void drawLeg(Graphics2D g2, int x, int y, Color c, String lbl) {
-                g2.setColor(c);
-                g2.fillOval(x, y - 8, 8, 8);
-                g2.setColor(ThemeManager.TEXT_SECONDARY);
-                g2.setFont(ThemeManager.FONT_SMALL);
-                g2.drawString(lbl, x + 14, y);
+        viewHolder.setOpaque(false);
+        viewHolder.add(buildDashboardView(), VIEW_DASHBOARD);
+        viewHolder.add(manageView, VIEW_MANAGE);
+        viewHolder.add(createView, VIEW_CREATE);
+        add(viewHolder, BorderLayout.CENTER);
+    }
+
+    // ------------------------------------------------------------------ dashboard
+
+    /** "max-w-7xl mx-auto px-8 py-8 flex flex-row gap-8": sidebar + analytics column. */
+    private JComponent buildDashboardView() {
+        sidebar = new SidebarNavigation(navController, section -> {
+            if (SidebarNavigation.SECTION_MANAGE.equals(section)) {
+                showManageView();
+            } else if (SidebarNavigation.SECTION_CREATE.equals(section)) {
+                showCreateView();
+            } else {
+                showDashboardView();
             }
-        };
-        donutChart.setOpaque(false);
+        });
 
-        chartsRow.add(barChart);
-        chartsRow.add(donutChart);
-        p.add(chartsRow);
-        p.add(Box.createVerticalStrut(20));
+        // heading row: title + "+ Schedule New Event"
+        JPanel titleBlock = new JPanel(new ConsoleUi.Stack(0));
+        titleBlock.setOpaque(false);
+        titleBlock.add(ConsoleUi.text("Auditorium Analytics", ConsoleUi.font(Weight.EXTRABOLD, 24), Color.WHITE, 32));
+        titleBlock.add(ConsoleUi.text("Real-time occupancy, student reservations & ticket telemetry",
+                ConsoleUi.font(Weight.REGULAR, 12), ThemeManager.TEXT_SECONDARY, 16));
+        StyledButton schedule = ConsoleUi.primaryButton("+ Schedule New Event", 20);
+        schedule.addActionListener(e -> showCreateView());
+        ConsoleUi.GlowRow heading = new ConsoleUi.GlowRow(titleBlock, schedule, false, 12);
 
-        // Recent Bookings Table matching Screen 10
-        JLabel recTitle = new JLabel("Recent Bookings");
-        recTitle.setFont(ThemeManager.FONT_HEADER);
-        recTitle.setForeground(ThemeManager.TEXT_PRIMARY);
-        p.add(recTitle);
-        p.add(Box.createVerticalStrut(8));
+        // "grid grid-cols-2 lg:grid-cols-4 gap-4"
+        JPanel metrics = new JPanel(new GridLayout(1, 4, 16, 0));
+        metrics.setOpaque(false);
+        metrics.add(totalEventsCard);
+        metrics.add(upcomingCard);
+        metrics.add(totalBookingsCard);
+        metrics.add(availableSeatsCard);
 
-        String[] cols = {"Event", "Student", "Seats", "Status", "Time"};
-        recentBookingsModel = new DefaultTableModel(cols, 0) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
-        };
-        recentBookingsTable = new JTable(recentBookingsModel);
-        recentBookingsTable.setRowHeight(30);
-        recentBookingsTable.setBackground(ThemeManager.BG_CARD);
-        recentBookingsTable.setForeground(ThemeManager.TEXT_PRIMARY);
-        recentBookingsTable.getTableHeader().setBackground(ThemeManager.BG_SECONDARY);
-        recentBookingsTable.getTableHeader().setForeground(ThemeManager.TEXT_MUTED);
+        // "grid lg:grid-cols-[1.5fr_1fr] gap-6"
+        JPanel charts = new JPanel(new ConsoleUi.Columns(24, 1.5, 1.0));
+        charts.setOpaque(false);
 
-        JScrollPane recScroll = new JScrollPane(recentBookingsTable);
-        recScroll.setOpaque(false);
-        recScroll.getViewport().setOpaque(false);
-        recScroll.setMaximumSize(new Dimension(1600, 160));
-        recScroll.setBorder(BorderFactory.createLineBorder(ThemeManager.BORDER_CARD));
-        p.add(recScroll);
+        ConsoleUi.Card bookingsCard = new ConsoleUi.Card(ThemeManager.RADIUS_2XL, new ConsoleUi.Stack(0));
+        bookingsCard.setBorder(new EmptyBorder(25, 25, 25, 25));
+        bookingsCard.add(ConsoleUi.text("Event Bookings (Last 6 Months)", ConsoleUi.font(Weight.BOLD, 14), Color.WHITE, 20));
+        bookingsCard.add(Box.createVerticalStrut(24));   // mb-6
+        bookingsCard.add(bookingsChart);
 
-        JScrollPane mainScroll = new JScrollPane(p);
-        mainScroll.setOpaque(false);
-        mainScroll.getViewport().setOpaque(false);
-        mainScroll.setBorder(null);
+        ConsoleUi.Card categoryCard = new ConsoleUi.Card(ThemeManager.RADIUS_2XL, new BorderLayout(0, 16));
+        categoryCard.setBorder(new EmptyBorder(25, 25, 25, 25));
+        categoryCard.add(ConsoleUi.text("Events by Category", ConsoleUi.font(Weight.BOLD, 14), Color.WHITE, 20),
+                BorderLayout.NORTH);
+        categoryCard.add(categoryChart, BorderLayout.CENTER);
 
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setOpaque(false);
-        wrapper.add(mainScroll, BorderLayout.CENTER);
-        return wrapper;
+        charts.add(bookingsCard);
+        charts.add(categoryCard);
+
+        dashboardError.setVisible(false);
+        DashboardBody body = new DashboardBody(sidebar, heading, dashboardError, metrics, charts);
+        dashboardScroll = ConsoleUi.scrollPage(body, 1280, 32, 32);
+        return dashboardScroll;
     }
 
-    private JPanel createMiniKpiCard(String icon, String val, String title, Color c) {
-        JPanel p = new JPanel(new BorderLayout(10, 0)) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(ThemeManager.BG_CARD);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                g2.setColor(ThemeManager.BORDER_CARD);
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 10, 10);
-                g2.dispose();
-                super.paintComponent(g);
+    /**
+     * "flex flex-row gap-8": the sidebar (w-60, as tall as the row) beside the "flex-1 space-y-6" column.
+     * Its bounds reach a little past the content box so the button glow is not cut off.
+     */
+    private static final class DashboardBody extends JPanel {
+        private static final int SIDEBAR = 240;
+        private static final int GAP_X = 32;
+        private static final int GAP_Y = 24;
+
+        private final JComponent sidebar;
+        private final JComponent[] column;
+
+        DashboardBody(JComponent sidebar, JComponent... column) {
+            super(null);
+            this.sidebar = sidebar;
+            this.column = column;
+            setOpaque(false);
+            add(sidebar);
+            for (JComponent c : column) {
+                add(c);
             }
-        };
-        p.setOpaque(false);
-        p.setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
+        }
 
-        JLabel iconLbl = new JLabel(icon);
-        iconLbl.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 22));
+        private int columnHeight() {
+            int h = 0;
+            int count = 0;
+            for (JComponent c : column) {
+                if (!c.isVisible()) continue;
+                h += c.getPreferredSize().height;
+                count++;
+            }
+            return h + Math.max(0, count - 1) * GAP_Y;
+        }
 
-        JPanel texts = new JPanel();
-        texts.setOpaque(false);
-        texts.setLayout(new BoxLayout(texts, BoxLayout.Y_AXIS));
+        @Override
+        public Dimension getPreferredSize() {
+            int w = 0;
+            for (JComponent c : column) {
+                w = Math.max(w, c.getPreferredSize().width);
+            }
+            return new Dimension(SIDEBAR + GAP_X + w, Math.max(sidebar.getPreferredSize().height, columnHeight()));
+        }
 
-        JLabel vLbl = new JLabel(val);
-        vLbl.setFont(ThemeManager.FONT_HEADER);
-        vLbl.setForeground(ThemeManager.TEXT_PRIMARY);
+        @Override
+        @SuppressWarnings("deprecation")
+        public void reshape(int x, int y, int w, int h) {
+            super.reshape(x, y, w + ConsoleUi.GlowRow.GLOW_X, h + ConsoleUi.GlowRow.GLOW_BOTTOM);
+        }
 
-        JLabel tLbl = new JLabel(title);
-        tLbl.setFont(ThemeManager.FONT_SMALL);
-        tLbl.setForeground(ThemeManager.TEXT_MUTED);
-
-        texts.add(vLbl);
-        texts.add(tLbl);
-
-        p.add(iconLbl, BorderLayout.WEST);
-        p.add(texts, BorderLayout.CENTER);
-        return p;
-    }
-
-    // -------------------------------------------------------------
-    // SCREEN 11: CREATE NEW EVENT FORM
-    // -------------------------------------------------------------
-    private JPanel buildCreateEventPanel() {
-        JPanel p = new JPanel();
-        p.setOpaque(false);
-        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-        p.setBorder(BorderFactory.createEmptyBorder(20, 24, 24, 24));
-
-        JLabel title = new JLabel("Create New Event");
-        title.setFont(ThemeManager.FONT_HEADER_XL);
-        title.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        p.add(title);
-        p.add(Box.createVerticalStrut(18));
-
-        titleInput = new StyledTextField("Event Title (e.g. AI in Modern World)");
-        catCombo = new JComboBox<>(EventCategory.values());
-        catCombo.setFont(ThemeManager.FONT_BODY);
-        catCombo.setBackground(ThemeManager.BG_CARD);
-        catCombo.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        descInput = new StyledTextField("Enter event description");
-        dateInput = new StyledTextField("YYYY-MM-DD (e.g. 2026-12-10)");
-        startInput = new StyledTextField("10:00 AM");
-        endInput = new StyledTextField("12:00 PM");
-        venueInput = new StyledTextField("Computer Science Department");
-        hallInput = new StyledTextField("Seminar Hall A");
-        capacityInput = new StyledTextField("100");
-        priceInput = new StyledTextField("0");
-
-        p.add(createFormRow("Event Title", titleInput));
-        p.add(createFormRow("Category", catCombo));
-        p.add(createFormRow("Description", descInput));
-        p.add(createFormRow("Date", dateInput));
-        p.add(createFormRow("Start Time", startInput));
-        p.add(createFormRow("End Time", endInput));
-        p.add(createFormRow("Department / Block", venueInput));
-        p.add(createFormRow("Seminar Hall", hallInput));
-        p.add(createFormRow("Total Seats", capacityInput));
-        p.add(createFormRow("Ticket Price (₹)", priceInput));
-
-        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        btnRow.setOpaque(false);
-
-        StyledButton cancelBtn = new StyledButton("Cancel", StyledButton.ButtonStyle.SECONDARY);
-        cancelBtn.addActionListener(e -> contentCardLayout.show(dynamicContentArea, CARD_MANAGE_EVENTS));
-
-        StyledButton createBtn = new StyledButton("Create Event", StyledButton.ButtonStyle.PRIMARY);
-        createBtn.addActionListener(e -> performCreateEvent());
-
-        btnRow.add(cancelBtn);
-        btnRow.add(createBtn);
-
-        p.add(Box.createVerticalStrut(12));
-        p.add(btnRow);
-
-        JScrollPane scroll = new JScrollPane(p);
-        scroll.setOpaque(false);
-        scroll.getViewport().setOpaque(false);
-        scroll.setBorder(null);
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.setOpaque(false);
-        wrapper.add(scroll, BorderLayout.CENTER);
-        return wrapper;
-    }
-
-    private JPanel createFormRow(String label, JComponent field) {
-        JPanel r = new JPanel(new BorderLayout(14, 0));
-        r.setOpaque(false);
-        r.setMaximumSize(new Dimension(800, 38));
-
-        JLabel l = new JLabel(label);
-        l.setPreferredSize(new Dimension(140, 34));
-        l.setFont(ThemeManager.FONT_BODY_BOLD);
-        l.setForeground(ThemeManager.TEXT_SECONDARY);
-
-        r.add(l, BorderLayout.WEST);
-        r.add(field, BorderLayout.CENTER);
-        return r;
-    }
-
-    private void performCreateEvent() {
-        try {
-            Event ev = new Event();
-            ev.setTitle(titleInput.getText().trim());
-            ev.setCategory((EventCategory) catCombo.getSelectedItem());
-            ev.setDescription(descInput.getText().trim());
-            ev.setDate(LocalDate.parse(dateInput.getText().trim().substring(0, 10)));
-            ev.setStartTime(LocalTime.of(10, 0));
-            ev.setEndTime(LocalTime.of(12, 0));
-            ev.setVenue(venueInput.getText().trim());
-            ev.setSeminarHall(hallInput.getText().trim());
-            ev.setTotalCapacity(Integer.parseInt(capacityInput.getText().trim()));
-            ev.setTicketPrice(Double.parseDouble(priceInput.getText().trim()));
-            ev.setOrganizerName("Faculty Coordinator");
-
-            eventService.createEvent(ev);
-            JOptionPane.showMessageDialog(this, "Event published successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
-            loadManageEvents();
-            contentCardLayout.show(dynamicContentArea, CARD_MANAGE_EVENTS);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error saving event: " + ex.getMessage(), "Validation Error", JOptionPane.ERROR_MESSAGE);
+        @Override
+        public void doLayout() {
+            int w = getWidth() - ConsoleUi.GlowRow.GLOW_X;
+            int h = getHeight() - ConsoleUi.GlowRow.GLOW_BOTTOM;
+            sidebar.setBounds(0, 0, SIDEBAR, h);
+            int x = SIDEBAR + GAP_X;
+            int y = 0;
+            for (JComponent c : column) {
+                if (!c.isVisible()) continue;
+                int ch = c.getPreferredSize().height;
+                c.setBounds(x, y, w - x, ch);
+                y += ch + GAP_Y;
+            }
         }
     }
 
-    // -------------------------------------------------------------
-    // SCREEN 12: MANAGE EVENTS TABLE
-    // -------------------------------------------------------------
-    private JPanel buildManageEventsPanel() {
-        JPanel p = new JPanel(new BorderLayout(0, 14));
-        p.setOpaque(false);
-        p.setBorder(BorderFactory.createEmptyBorder(20, 24, 24, 24));
+    // ------------------------------------------------------------------ views
 
-        JPanel top = new JPanel(new BorderLayout());
-        top.setOpaque(false);
-
-        JLabel title = new JLabel("Manage Events");
-        title.setFont(ThemeManager.FONT_HEADER_XL);
-        title.setForeground(ThemeManager.TEXT_PRIMARY);
-
-        StyledButton newBtn = new StyledButton("+ Create Event", StyledButton.ButtonStyle.PRIMARY);
-        newBtn.addActionListener(e -> contentCardLayout.show(dynamicContentArea, CARD_CREATE_EVENT));
-
-        top.add(title, BorderLayout.WEST);
-        top.add(newBtn, BorderLayout.EAST);
-        p.add(top, BorderLayout.NORTH);
-
-        String[] cols = {"Event", "Date", "Venue", "Seats", "Status", "Action"};
-        manageEventsModel = new DefaultTableModel(cols, 0) {
-            @Override public boolean isCellEditable(int r, int c) { return false; }
-        };
-
-        manageEventsTable = new JTable(manageEventsModel);
-        manageEventsTable.setRowHeight(36);
-        manageEventsTable.setBackground(ThemeManager.BG_CARD);
-        manageEventsTable.setForeground(ThemeManager.TEXT_PRIMARY);
-        manageEventsTable.getTableHeader().setBackground(ThemeManager.BG_SECONDARY);
-        manageEventsTable.getTableHeader().setForeground(ThemeManager.TEXT_MUTED);
-
-        JScrollPane scroll = new JScrollPane(manageEventsTable);
-        scroll.setOpaque(false);
-        scroll.getViewport().setOpaque(false);
-        scroll.setBorder(BorderFactory.createLineBorder(ThemeManager.BORDER_CARD));
-        p.add(scroll, BorderLayout.CENTER);
-
-        return p;
+    private void showDashboardView() {
+        sidebar.setActiveSection(SidebarNavigation.SECTION_DASHBOARD);
+        views.show(viewHolder, VIEW_DASHBOARD);
+        SwingUtilities.invokeLater(() -> dashboardScroll.getVerticalScrollBar().setValue(0));
     }
 
-    private void loadManageEvents() {
-        manageEventsModel.setRowCount(0);
-        SwingWorker<List<Event>, Void> worker = new SwingWorker<>() {
-            @Override
-            protected List<Event> doInBackground() throws Exception {
-                return eventService.getAllEvents();
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    List<Event> list = get();
-                    for (Event ev : list) {
-                        manageEventsModel.addRow(new Object[]{
-                                ev.getTitle(),
-                                ev.getDate().toString(),
-                                ev.getSeminarHall(),
-                                ev.getTotalCapacity(),
-                                ev.isCancelled() ? "Cancelled" : "Upcoming",
-                                "✏️ Edit / 🗑️ Delete"
-                        });
-                    }
-                } catch (Exception ignored) {}
-            }
-        };
-        worker.execute();
+    private void showManageView() {
+        manageView.clearNotice();
+        views.show(viewHolder, VIEW_MANAGE);
+        manageView.scrollToTop();
+        refreshData();
     }
 
-    private JPanel buildBookingsPanel() {
-        JPanel p = new JPanel(new BorderLayout(0, 14));
-        p.setOpaque(false);
-        p.setBorder(BorderFactory.createEmptyBorder(20, 24, 24, 24));
-        JLabel title = new JLabel("All Student Bookings");
-        title.setFont(ThemeManager.FONT_HEADER_XL);
-        title.setForeground(ThemeManager.TEXT_PRIMARY);
-        p.add(title, BorderLayout.NORTH);
-        return p;
+    private void showCreateView() {
+        createView.startNew();
+        views.show(viewHolder, VIEW_CREATE);
+    }
+
+    private void showEditView(Event event) {
+        createView.startEdit(event);
+        views.show(viewHolder, VIEW_CREATE);
     }
 
     @Override
     public void onScreenDisplayed() {
-        loadDashboardData();
+        manageView.clearNotice();
+        showDashboardView();
+        refreshData();
     }
 
-    private void loadDashboardData() {
-        recentBookingsModel.setRowCount(0);
-        SwingWorker<List<Booking>, Void> worker = new SwingWorker<>() {
+    // ------------------------------------------------------------------ data
+
+    /** Everything the console shows, loaded together off the EDT. */
+    private static final class Snapshot {
+        OrganizerAnalytics analytics;
+        String analyticsError;
+        List<Event> events;
+        String eventsError;
+        List<Booking> bookings = new ArrayList<>();
+    }
+
+    private void refreshData() {
+        int generation = ++loadGeneration;
+        new SwingWorker<Snapshot, Void>() {
             @Override
-            protected List<Booking> doInBackground() throws Exception {
-                return bookingService.getAllBookings();
+            protected Snapshot doInBackground() {
+                Snapshot s = new Snapshot();
+                try {
+                    s.analytics = bookingService.getOrganizerAnalytics();
+                    s.bookings = bookingService.getAllBookings();
+                } catch (Exception ex) {
+                    s.analyticsError = message(ex);
+                }
+                try {
+                    s.events = eventService.getAllEvents();
+                } catch (Exception ex) {
+                    s.eventsError = message(ex);
+                }
+                return s;
+            }
+
+            @Override
+            protected void done() {
+                if (generation != loadGeneration) return;   // a newer load is on its way
+                try {
+                    apply(get());
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                } catch (ExecutionException ex) {
+                    dashboardError.error("Could not load analytics: " + message(ex.getCause()));
+                    dashboardError.setVisible(true);
+                }
+            }
+        }.execute();
+    }
+
+    private void apply(Snapshot s) {
+        if (s.analytics != null) {
+            totalEventsCard.setValue(String.format("%,d", s.analytics.getTotalEvents()));
+            upcomingCard.setValue(String.format("%,d", s.analytics.getUpcomingEvents()));
+            totalBookingsCard.setValue(String.format("%,d", s.analytics.getTotalBookings()));
+            availableSeatsCard.setValue(String.format("%,d", s.analytics.getAvailableSeats()));
+            bookingsChart.setData(DashboardCharts.BookingsBarChart.lastSixMonths(), bookingsPerMonth(s.bookings));
+            dashboardError.clear();
+        } else {
+            dashboardError.error("Could not load analytics: " + s.analyticsError);
+        }
+
+        if (s.events != null) {
+            List<Event> events = new ArrayList<>(s.events);
+            events.sort(Comparator.comparing(Event::getDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(Event::getStartTime, Comparator.nullsLast(Comparator.naturalOrder())));
+            manageView.setEvents(events);
+            createView.setKnownEvents(events);
+            categoryChart.setSlices(categorySlices(events));
+        } else {
+            manageView.showLoadError(s.eventsError);
+        }
+        revalidate();
+        repaint();
+    }
+
+    /** Bookings made in each of the last six months (oldest first). */
+    private static int[] bookingsPerMonth(List<Booking> bookings) {
+        List<YearMonth> months = DashboardCharts.BookingsBarChart.lastSixMonths();
+        int[] counts = new int[months.size()];
+        for (Booking booking : bookings) {
+            if (booking.getBookingTime() == null) continue;
+            int index = months.indexOf(YearMonth.from(booking.getBookingTime()));
+            if (index >= 0) counts[index]++;
+        }
+        return counts;
+    }
+
+    /** Share of scheduled (not cancelled) events per category, largest first, in the web's colors. */
+    private static List<DashboardCharts.CategoryDonutChart.Slice> categorySlices(List<Event> events) {
+        Map<EventCategory, Integer> counts = new EnumMap<>(EventCategory.class);
+        for (Event event : events) {
+            if (!event.isCancelled() && event.getCategory() != null) {
+                counts.merge(event.getCategory(), 1, Integer::sum);
+            }
+        }
+        List<EventCategory> order = new ArrayList<>(counts.keySet());
+        order.sort(Comparator.comparing((EventCategory c) -> -counts.get(c))
+                .thenComparing(c -> EventVisuals.CHIP_ORDER.indexOf(c)));
+        List<DashboardCharts.CategoryDonutChart.Slice> slices = new ArrayList<>();
+        for (EventCategory category : order) {
+            slices.add(new DashboardCharts.CategoryDonutChart.Slice(
+                    CreateEventView.categoryName(category), counts.get(category), categoryColor(category)));
+        }
+        return slices;
+    }
+
+    /** Legend dots: Technical #ff382e, Workshop blue-500, Cultural emerald-500, Seminar amber-500. */
+    private static Color categoryColor(EventCategory category) {
+        switch (category) {
+            case WORKSHOP: return ConsoleUi.BLUE_500;
+            case CULTURAL: return ConsoleUi.EMERALD_500;
+            case GUEST_LECTURE: return ConsoleUi.AMBER_500;
+            case HACKATHON: return ConsoleUi.PURPLE_500;
+            case SPORTS: return ConsoleUi.SKY_500;
+            default: return ThemeManager.BRAND_RED;
+        }
+    }
+
+    // ------------------------------------------------------------------ delete
+
+    private void deleteEvent(Event event) {
+        int choice = JOptionPane.showConfirmDialog(this,
+                "Delete \"" + event.getTitle() + "\"? Students will no longer be able to book it.",
+                "Delete Event", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.YES_OPTION) return;
+
+        manageView.clearNotice();
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                eventService.deleteEvent(event.getId());
+                return null;
             }
 
             @Override
             protected void done() {
                 try {
-                    List<Booking> list = get();
-                    for (Booking b : list) {
-                        recentBookingsModel.addRow(new Object[]{
-                                b.getEventTitle(),
-                                b.getUserName(),
-                                b.getFormattedSeats(),
-                                b.getStatus().name(),
-                                "Just now"
-                        });
-                    }
-                } catch (Exception ignored) {}
+                    get();
+                    manageView.showSuccess("\"" + event.getTitle() + "\" was deleted and is now marked Cancelled.");
+                    refreshData();
+                } catch (ExecutionException ex) {
+                    manageView.showError(message(ex.getCause()));
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
             }
-        };
-        worker.execute();
+        }.execute();
+    }
+
+    private static String message(Throwable t) {
+        if (t == null) return "Unknown error";
+        return t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
     }
 }

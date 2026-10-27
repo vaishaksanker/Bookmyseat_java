@@ -7,7 +7,7 @@ An enterprise-grade Java desktop application engineered with **Java 17**, **Java
 
 ## 🌟 Key Highlights & Architectural Features
 
-- **Cinematic Dark Theme UI/UX**: Custom charcoal/near-black canvas (`#0F1117`), vibrant BookMyShow cinematic red (`#E62E4D`), soft card elevations, translucent status badges, and rounded button geometry.
+- **Same UI as the SeminarX web app** ([seminarx-booking.vercel.app](https://seminarx-booking.vercel.app)): every screen mirrors the web page of the same name — its near-black `#050609` canvas, `#ff382e → #ff6835` glow buttons, glass cards, Plus Jakarta Sans type, Lucide icons and Unsplash event photos (downloaded on first view, then cached in `~/.bookmyseat/image-cache`). Like the website, the app opens on the Home page for guests and asks for sign-in only when booking, viewing My Bookings or opening the Faculty Console.
 - **Strict Layered Architecture (MVC / Interface Separation)**:
   - **Zero SQL / Zero JDBC** in any Swing components or UI classes.
   - All screens interact solely with domain service interfaces: `UserService`, `EventService`, `SeatService`, `BookingService`, `PaymentService`, and `TicketService`.
@@ -50,7 +50,7 @@ cd frontend
 ```bash
 mvn clean test
 ```
-*Runs 26 tests: the demo-mode services, plus the UI services running on the real backend and an in-memory database (login, registration, search, seat maps, paid and free bookings, declined payments, cancellations, organizer events, analytics).*
+*Runs 27 tests: the demo-mode services, plus the UI services running on the real backend and an in-memory database (login, registration, search, seat maps, paid and free bookings, declined payments, cancellations, organizer events, analytics).*
 
 ### 2. Run the Application Directly
 ```bash
@@ -75,14 +75,19 @@ Payments are simulated by the backend: totals ending in `.99` are declined, whic
 
 ## 🔑 Quick Demo Credentials
 
-The application includes built-in quick-fill buttons on the login screen for instant demonstration:
+The login screen is pre-filled with the student account; the "Use the organizer demo account" line under it switches to the organizer:
 
 | Role | Email | Password | Access Rights |
 | :--- | :--- | :--- | :--- |
-| **Student** | `student@college.edu` | `student123` | Student discovery homepage, auditorium seat booking, e-pass view, booking history |
-| **Organizer / Admin** | `organizer@college.edu` | `admin123` | Organizer control center, occupancy analytics, event creation & scheduling, bookings ledger |
+| **Student** | `student@college.edu` | `student123` | Home, seat booking, digital passes, My Bookings |
+| **Faculty Coordinator (admin)** | `organizer@college.edu` | `admin123` | Faculty Console: analytics, scheduling, editing and cancelling any department's events |
 
-*You can also click **"Register here"** on the login screen to register brand-new accounts with immediate validation and persistence.*
+*Click **Register** on the login screen to create a new student account.*
+
+### Credits
+- Font: [Plus Jakarta Sans](https://github.com/tokotype/PlusJakartaSans), SIL Open Font License 1.1 (`src/main/resources/fonts/OFL.txt`).
+- Icons: [Lucide](https://lucide.dev), ISC License (`src/main/resources/icons/lucide/LICENSE`), converted from the web app's `lucide-react` package.
+- Event photos: Unsplash, the same images the web app uses.
 
 ---
 
