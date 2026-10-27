@@ -171,7 +171,8 @@ public class EventListPanel extends JPanel implements NavigationController.Refre
                     cardsGrid.repaint();
                 } catch (Exception e) {
                     cardsGrid.removeAll();
-                    cardsGrid.add(new JLabel("Error loading events: " + e.getMessage()));
+                    String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    cardsGrid.add(new JLabel("Error loading events: " + msg));
                     cardsGrid.revalidate();
                     cardsGrid.repaint();
                 }

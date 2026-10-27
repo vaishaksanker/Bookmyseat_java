@@ -3,8 +3,10 @@ package com.seminarhall.ui;
 import com.seminarhall.model.Booking;
 import com.seminarhall.model.Event;
 import com.seminarhall.model.Seat;
+import com.seminarhall.model.User;
 import com.seminarhall.service.BookingService;
 import com.seminarhall.service.PaymentService;
+import com.seminarhall.service.ServiceException;
 import com.seminarhall.service.ServiceFactory;
 import com.seminarhall.service.SessionManager;
 import com.seminarhall.ui.components.StepIndicatorBar;
@@ -279,14 +281,19 @@ public class PaymentPanel extends JPanel {
         payNowBtn.setText("Processing...");
 
         double total = currentSeats.stream().mapToDouble(Seat::getPrice).sum();
-        String userId = SessionManager.getInstance().getCurrentUser() != null
-                ? SessionManager.getInstance().getCurrentUser().getId() : "usr_student_1";
+        User currentUser = SessionManager.getInstance().getCurrentUser();
+        String userId = currentUser != null ? currentUser.getId() : "usr_student_1";
+        String payer = currentUser != null ? currentUser.getEmail() : "guest";
         List<String> seatIds = currentSeats.stream().map(Seat::getId).collect(Collectors.toList());
 
         SwingWorker<Booking, Void> worker = new SwingWorker<>() {
             @Override
             protected Booking doInBackground() throws Exception {
-                PaymentService.PaymentResult res = paymentService.processPayment(selectedMethod, total, "demo_user");
+                PaymentService.PaymentResult res = paymentService.processPayment(selectedMethod, total, payer);
+                if (!res.isSuccess()) {
+                    // never reserve seats for a payment that did not go through
+                    throw new ServiceException(res.getMessage());
+                }
                 return bookingService.createBooking(currentEvent.getId(), userId, seatIds, selectedMethod, res.getTransactionId());
             }
 
@@ -298,7 +305,8 @@ public class PaymentPanel extends JPanel {
                     Booking b = get();
                     navController.showBookingConfirmation(b.getId());
                 } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(PaymentPanel.this, "Payment / Reservation error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    String msg = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
+                    JOptionPane.showMessageDialog(PaymentPanel.this, "Payment / Reservation error: " + msg, "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         };

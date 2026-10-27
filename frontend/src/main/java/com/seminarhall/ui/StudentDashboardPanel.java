@@ -66,7 +66,8 @@ public class StudentDashboardPanel extends JPanel implements NavigationControlle
                     renderDashboard(events);
                 } catch (Exception e) {
                     contentContainer.removeAll();
-                    contentContainer.add(new JLabel("Failed to load events: " + e.getMessage()));
+                    String msg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                    contentContainer.add(new JLabel("Failed to load events: " + msg));
                     contentContainer.revalidate();
                     contentContainer.repaint();
                 }

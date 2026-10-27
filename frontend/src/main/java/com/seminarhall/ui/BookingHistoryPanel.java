@@ -139,15 +139,20 @@ public class BookingHistoryPanel extends JPanel implements NavigationController.
         SwingWorker<List<Booking>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<Booking> doInBackground() throws Exception {
-                return bookingService.getAllBookings(); // Show student bookings ledger
+                return bookingService.getBookingsForUser(userId); // only the logged-in student's bookings
             }
 
             @Override
             protected void done() {
                 try {
                     userBookings = get();
-                    filterList();
-                } catch (Exception ignored) {}
+                } catch (Exception ex) {
+                    userBookings = new ArrayList<>();
+                    String msg = ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage();
+                    JOptionPane.showMessageDialog(BookingHistoryPanel.this, "Could not load your bookings: " + msg,
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                }
+                filterList();
             }
         };
         worker.execute();
