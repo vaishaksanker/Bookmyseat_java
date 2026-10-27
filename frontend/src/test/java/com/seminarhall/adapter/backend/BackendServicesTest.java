@@ -119,8 +119,8 @@ class BackendServicesTest {
         Event cultural = eventTitled("Annual Cultural Meet");
         assertEquals(EventCategory.CULTURAL, cultural.getCategory());
         assertEquals("Main Auditorium", cultural.getSeminarHall());
-        assertEquals("Campus Cultural Center", cultural.getVenue());
-        assertEquals("Fine Arts Club", cultural.getOrganizerName());
+        assertEquals("Main Campus", cultural.getVenue());
+        assertEquals("Student Arts Council", cultural.getOrganizerName());
         assertEquals(LocalTime.of(18, 0), cultural.getStartTime());
         assertEquals(LocalTime.of(21, 30), cultural.getEndTime());
         assertEquals(1, cultural.getBookedSeats());   // seeded booking C3
@@ -129,11 +129,11 @@ class BackendServicesTest {
     @Test
     @DisplayName("search filters by text and category and sorts by price")
     void search_filtersAndSorts() throws ServiceException {
-        assertEquals(List.of("Robotics Workshop"),
-                events.searchEvents("ros 2", EventCategory.ALL, "Date").stream()
+        assertEquals(List.of("Robotics & IoT Workshop"),
+                events.searchEvents("ultrasonic", EventCategory.ALL, "Date").stream()
                         .map(Event::getTitle).collect(Collectors.toList()));
         List<Event> byPrice = events.searchEvents("", EventCategory.WORKSHOP, "Price (High to Low)");
-        assertEquals("Robotics Workshop", byPrice.get(0).getTitle());
+        assertEquals("Robotics & IoT Workshop", byPrice.get(0).getTitle());
         assertEquals("Web Development Bootcamp", byPrice.get(2).getTitle());
     }
 
@@ -151,7 +151,7 @@ class BackendServicesTest {
     @Test
     @DisplayName("paid booking is confirmed, charged by the backend and issues passes")
     void paidBooking_confirmedWithTickets() throws ServiceException {
-        Event robotics = eventTitled("Robotics Workshop");
+        Event robotics = eventTitled("Robotics & IoT Workshop");
 
         Booking booking = payAndBook(robotics, student, seatIds(robotics, "E4", "E5"));
 
@@ -165,14 +165,14 @@ class BackendServicesTest {
         assertEquals(2, passes.size());
         Ticket pass = tickets.getTicketByNumber(passes.get(0).getTicketNumber());
         assertEquals("E4", pass.getSeatIdentifier());
-        assertEquals("Robotics Lab", pass.getSeminarHall());
+        assertEquals("Engineering Lab", pass.getSeminarHall());
         assertEquals(List.of("E4", "E5"), bookings.getBookingById(booking.getId()).getSeatIdentifiers());
     }
 
     @Test
     @DisplayName("free events are confirmed without a payment")
     void freeBooking_confirmedWithoutCharge() throws ServiceException {
-        Event summit = eventTitled("Cybersecurity Summit");
+        Event summit = eventTitled("Cybersecurity Summit 2024");
         Booking booking = payAndBook(summit, student, seatIds(summit, "A3"));
         assertEquals(BookingStatus.CONFIRMED, booking.getStatus());
         assertEquals(0.0, booking.getTotalAmount());
@@ -219,7 +219,7 @@ class BackendServicesTest {
     @Test
     @DisplayName("cancelling a booking frees its seats")
     void cancel_releasesSeats() throws ServiceException {
-        Event robotics = eventTitled("Robotics Workshop");
+        Event robotics = eventTitled("Robotics & IoT Workshop");
         Booking booking = payAndBook(robotics, student, seatIds(robotics, "F1"));
 
         bookings.cancelBooking(booking.getId());
@@ -245,6 +245,18 @@ class BackendServicesTest {
     }
 
     @Test
+    @DisplayName("the faculty coordinator can cancel any department's event")
+    void facultyCoordinatorCancelsDepartmentEvent() throws ServiceException {
+        SessionManager.getInstance().setCurrentUser(
+                users.authenticate(DemoDataSeeder.ORGANIZER_EMAIL, DemoDataSeeder.ORGANIZER_PASSWORD));
+        Event hackathon = eventTitled("24-Hour Campus Hackathon");   // owned by the Innovation & Incubation Cell
+
+        events.cancelEvent(hackathon.getId());
+
+        assertTrue(events.getEventById(hackathon.getId()).isCancelled());
+    }
+
+    @Test
     @DisplayName("students cannot create events")
     void studentCannotCreateEvent() {
         assertThrows(ServiceException.class, () -> events.createEvent(newEvent("Not Allowed", 0, 10)));
@@ -257,7 +269,7 @@ class BackendServicesTest {
         assertEquals(12, analytics.getTotalEvents());
         assertEquals(4, analytics.getTotalBookings());
         assertEquals(350.0, analytics.getTotalRevenue());   // bootcamp 2 x 100 + cultural meet 150
-        assertEquals(6, analytics.getBookedSeats());          // B5-B7, A1-A2, C3 (D1-D2 cancelled)
+        assertEquals(5, analytics.getBookedSeats());          // B5-B6, A1-A2, C3 (D1-D2 cancelled)
     }
 
     private static Event newEvent(String title, double price, int capacity) {
