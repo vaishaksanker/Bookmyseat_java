@@ -8,6 +8,7 @@ import com.bookmyshow.exception.EventNotFoundException;
 import com.bookmyshow.exception.SeatNotAvailableException;
 import com.bookmyshow.exception.ValidationException;
 import com.bookmyshow.model.Booking;
+import com.bookmyshow.model.BookingSeat;
 import com.bookmyshow.model.Event;
 import com.bookmyshow.model.Seat;
 import com.bookmyshow.model.User;
@@ -265,6 +266,64 @@ class BookingServiceImplTest {
         when(bookingDAO.findById(1)).thenReturn(Optional.of(cancelled));
 
         assertThrows(BookingException.class, () -> bookingService.cancelBooking(1));
+    }
+
+    @Test
+    @DisplayName("cancelBooking: PENDING booking releases its reserved seats")
+    void cancelBooking_pending_releasesReservedSeats() {
+        Booking pending = new Booking(1, customer.getId(), 5, new BigDecimal("400.00"));
+        pending.addBookingSeat(new BookingSeat(1, 101, "A1"));
+        pending.addBookingSeat(new BookingSeat(1, 102, "A2"));
+        when(bookingDAO.findById(1)).thenReturn(Optional.of(pending));
+        when(bookingDAO.update(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(1);
+
+        verify(seatDAO).releaseSeats(List.of(101, 102));
+    }
+
+    @Test
+    @DisplayName("cancelBooking: FAILED booking does not release seats again")
+    void cancelBooking_failed_doesNotReleaseSeats() {
+        Booking failed = new Booking(1, customer.getId(), 5, new BigDecimal("400.00"));
+        failed.addBookingSeat(new BookingSeat(1, 101, "A1"));
+        failed.setStatus(BookingStatus.FAILED);
+        when(bookingDAO.findById(1)).thenReturn(Optional.of(failed));
+        when(bookingDAO.update(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(1);
+
+        verify(seatDAO, never()).releaseSeats(anyList());
+    }
+
+    // =========================================================
+    // failBooking
+    // =========================================================
+
+    @Test
+    @DisplayName("failBooking: PENDING booking is marked FAILED and its seats released")
+    void failBooking_pending_marksFailedAndReleasesSeats() {
+        Booking pending = new Booking(1, customer.getId(), 5, new BigDecimal("400.00"));
+        pending.addBookingSeat(new BookingSeat(1, 101, "A1"));
+        pending.addBookingSeat(new BookingSeat(1, 102, "A2"));
+        when(bookingDAO.findById(1)).thenReturn(Optional.of(pending));
+        when(bookingDAO.update(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Booking result = bookingService.failBooking(1);
+
+        assertEquals(BookingStatus.FAILED, result.getStatus());
+        verify(seatDAO).releaseSeats(List.of(101, 102));
+    }
+
+    @Test
+    @DisplayName("failBooking: CONFIRMED booking throws BookingException")
+    void failBooking_confirmed_throwsException() {
+        Booking confirmed = new Booking(1, customer.getId(), 5, new BigDecimal("400.00"));
+        confirmed.setStatus(BookingStatus.CONFIRMED);
+        when(bookingDAO.findById(1)).thenReturn(Optional.of(confirmed));
+
+        assertThrows(BookingException.class, () -> bookingService.failBooking(1));
+        verify(seatDAO, never()).releaseSeats(anyList());
     }
 
     // =========================================================
